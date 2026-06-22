@@ -22,7 +22,7 @@ if [ -f web/package.json ] && command -v pnpm >/dev/null 2>&1; then
 fi
 if [ -f api/pyproject.toml ] && command -v uv >/dev/null 2>&1; then
   checked=1
-  if ! out="$( (cd api && uv run mypy .) 2>&1 )"; then add_fail "api mypy" "$out"; fi
+  if ! out="$( (cd api && uv run mypy) 2>&1 )"; then add_fail "api mypy" "$out"; fi
 fi
 
 [ "$checked" = "0" ] && exit 0   # nothing to verify yet (dormant)

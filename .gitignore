@@ -32,6 +32,7 @@ secrets/
 
 # === Claude Code (commit shared config; ignore local overrides) ===
 .claude/settings.local.json
+.claude/.verify-gate-off
 
 # === os / editor ===
 .DS_Store

@@ -34,6 +34,7 @@ select = ["E", "F", "I", "UP", "B"]
 [tool.mypy]
 python_version = "3.12"
 strict = true
+files = ["missioncontrol"]
 
 [tool.pytest.ini_options]
 addopts = "--cov=missioncontrol --cov-report=term-missing --cov-fail-under=100"

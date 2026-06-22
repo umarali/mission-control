@@ -11,7 +11,7 @@ Frontend (only if `web/` exists):
 
 Backend (only if `api/` exists):
 - `cd api && uv run ruff check .`
-- `cd api && uv run mypy .`
+- `cd api && uv run mypy`
 - `cd api && uv run pytest --cov --cov-report=term-missing`
 
 Stop at the first category with failures and show the relevant output. Report coverage % and flag
