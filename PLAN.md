@@ -1,286 +1,181 @@
-# Mission Control — Plan (Draft v3.4)
+# Mission Control — Plan (v4.0)
 
-**Status:** DRAFT v3.4 — **Codex verdict: "ship this as the v1 plan"** (pass 6). Built from scratch
-on Bun built-ins, near-zero deps (claumon dropped for supply-chain + maintenance reasons).
-Quota-only, purely read-only. Final wording + subprocess-hardening notes folded in.
-**Date:** 2026-06-21
+**Status:** Reframed + stack locked. **Product = Mission Control** (a local-first command center
+over the whole dev stack + AI agents). **v1 beachhead = the cross-agent quota panel** (not the
+product's identity). **Stack = Next.js + TypeScript (`web/`) + Python/FastAPI (`api/`).**
+**Date:** 2026-06-22
 **Owner:** Umar Ali
-**Type:** Internal tool. Solo dev / small team. Built to be useful fast, not (yet) a product to sell.
-**Working v1 name:** Radar (agent quota).
+**Type:** Internal tool. Solo dev / small team. Built to be useful fast.
 
-**Revision trail:** v1 (revise: AWS kill-switch) → v2.1 (ship) → owner tabled AWS, added quota →
-v3 (revise: read-only-violating probe, Keychain/policy) → v3.1 (probe removed, Claude path decided)
-→ v3.2 (v1 scoped to quota-only; watch-feed → v1.5) → v3.3 (claumon dropped; build-from-scratch,
-minimal audited deps) → **v3.4** (Codex pass 6: ship; wording + subprocess hardening tightened).
-
----
-
-## 1. Problem
-
-Running Claude Code and Codex hard across many projects (measured: 64 Claude + 12 Codex sessions
-in 24h across 32 projects) while living in Slack, Asana, GitHub, Drive, and Vercel, you lose the
-ability to see *state*. The pains:
-
-1. **You can't see your remaining agent allowance,** so you either slam into a rate limit
-   mid-task or let a 5-hour window reset with quota unused. Both waste your day.
-2. **Agents do things you catch too late** (the original case: an agent left a GPU billing).
-3. **Important Slack / Asana / GitHub items get buried.**
-4. **You lose the thread on what an agent was doing across sessions.**
-5. **(Biggest) Context-switching so heavy you can't tell what state anything is in.**
-
-**What v1 explicitly does NOT solve:** cost/idle-resource surprises (pain #2; AWS tabled), and the
-lost-thread / context-switching pains (#4, #5) which need the watch-feed (v1.5) and the two views
-(later). v1 targets pain #1 head-on and nothing else.
+**Revision trail:** v1–v2.1 (AWS radar, Codex "ship") → owner tabled AWS, added quota → v3–v3.4
+(quota path Codex-reviewed "ship") → **v4.0** (reframed as the Mission Control product with quota
+as the v1 beachhead; stack pivoted to Next.js/TS + Python/FastAPI). Quota mechanism details below
+are unchanged from the v3.4 Codex review; the architecture and framing are new.
 
 ---
 
-## 2. What it is
+## 1. The product (the vision)
 
-A **web-based dashboard** to *watch* your agents and dev stack in one place, starting with the
-one number you can't see today: how much agent quota you have left, per window, for both agents.
+**Mission Control** is a local-first command center that gives you one place to **watch** the
+significant activity across your entire dev stack and AI agents, and to **act** on it without
+tab-hopping or living inside cramped IDE panels.
 
-**Surfaces (current scope):** Claude Code, OpenAI Codex (v1, quota only); Slack, Asana, GitHub,
-Google Drive, Vercel (v2+). AWS: tabled.
+**Surfaces:** Slack, Asana, GitHub, Google Drive, Vercel, AWS, Claude Code, OpenAI Codex.
 
-**Two views (longer arc):** Timeline (ambient awareness) and Work-threads (per-piece-of-work
-context). **v1 ships only the quota panel** (purely read-only). The agent watch-feed is v1.5; the
-two views fill in later.
+**Two views:**
+- **Timeline** — ambient awareness, "what just happened" across everything, chronologically.
+- **Work-threads** — per-piece-of-work context: one thread bundling the agent session(s) + GitHub
+  PR + Asana task + Drive briefs/docs + spend + Slack thread, with auto-captured artifacts.
 
----
+**Watch / act posture:** watch broadly; **act** on the collaboration surfaces (Slack/Asana/GitHub/
+Drive/Vercel) and on notifications; **agents and AWS are watch-only** (no agent control, no infra
+mutation). Jump-to-agent hands off to the CLI.
 
-## 3. Principles (non-negotiable)
+This is the destination. The rest of this plan is how we get there without boiling the ocean.
 
-- **Vendor-neutral.** Both agents are equal citizens. Seeing them side by side is the point.
-- **Local-first.** Runs on your machine. No public ingress.
-- **Read-only and non-invasive.** Reads only. Never spends quota to measure quota, never runs an
-  agent action, never changes how your agents behave. **v1 has no agent/control command execution
-  and no HTTP action endpoint;** the only subprocesses are allowlisted first-party OS binaries
-  (`/usr/bin/security` for the Keychain, the OS notifier for alerts). No active probes in the normal flow.
-- **Minimal, audited dependencies.** Prefer language built-ins and first-party OS tools over
-  third-party packages. Every dependency must be actively maintained, pinned, lockfile-committed,
-  and audited. After the axios and LiteLLM supply-chain incidents, an unmaintained fork or a heavy
-  transitive tree is a liability, not a shortcut. **No dependency we would not read in full.**
-- **Tokens never leak.** OAuth/bearer tokens are never persisted by the app, never sent to the
-  browser, and are redacted from all logs and crash output.
-- **Reading quality is a feature** (applies once the watch-feed lands in v1.5).
-- **Watch-only for agents.** Jump-to-agent (`claude --resume` / `codex resume`) arrives with the
-  watch-feed in v1.5; it is the first command-exec surface and gets the stricter hardening then.
-- **Read the vendor's number, never guess.** Quota comes from server-authoritative percentages,
-  never from hardcoded plan caps (Anthropic stopped publishing fixed caps in 2026).
+## 2. Why quota is v1 (the beachhead, not the identity)
 
----
+This is way more than a quota dashboard. But you build a command center one surface at a time, and
+the **cross-agent quota panel** is the right first slice:
 
-## 4. Feature pillars
+1. **Highest daily ROI you feel immediately** — stop wasting use-it-or-lose-it Claude/Codex windows
+   and stop getting throttled mid-task.
+2. **Lowest risk, fastest to ship** — two read-only collectors + a small UI; no OAuth dance, no
+   write actions, no infra.
+3. **It builds the pipeline everything else reuses** — reading agent state locally, the normalized
+   event store, the live (SSE) UI, the security model for tokens. The watch-feed, work-threads, and
+   the SaaS integrations all sit on top of this same spine.
 
-1. **Cross-agent quota panel (v1 hero).** Four live gauges: Claude 5h, Claude weekly, Codex 5h,
-   Codex weekly. Each shows **remaining % + reset countdown**. Framed for *maximizing usage*:
-   - an **unused-headroom nudge** ("30 min to reset, 55% untouched, queue work now"),
-   - a **throttle warning** when remaining < ~5% or a window is blocked,
-   - **cross-agent visibility** so you can see at a glance which agent has room and *choose* to
-     send the next job there. (Visibility + nudges, not auto-routing.)
-2. **Consumed token/cost metering** per agent / thread / project (v1.5+). Separate from quota
-   (different sources). Claude cost `exact`, Codex `estimated`/`unknown`. Never faked.
-3. **Agent watch-feed (read-only)** with rendered transcripts + needs-attention flag. **(v1.5.)**
-4. **Notification triage + act** (v2) — buried Slack/Asana/GitHub items in one list.
-5. **Work-threads + artifact linking** (later) — auto-capture from the tool stream, by-convention, manual.
-6. **Opt-in pre-prompt shaping hooks** (later) — agents emit dashboard-ready artifacts. Always optional.
+So quota is the wedge; **the product is Mission Control.** The roadmap (§8) is the climb from this
+beachhead to the full command center.
 
----
+## 3. The pains it solves (full product)
 
-## 5. Technical findings (verified on this machine)
+1. **Can't see remaining agent allowance** → waste quota or hit limits. (v1 solves this.)
+2. **Agents do costly/risky things caught too late** (e.g. a GPU left billing). (AWS watch, later.)
+3. **Important Slack / Asana / GitHub items get buried.** (Notification triage, v2.)
+4. **Lose the thread on what an agent was doing across sessions.** (Watch-feed + work-threads.)
+5. **(Biggest) Context-switching so heavy you can't tell what state anything is in.** (The whole
+   point of Mission Control; addressed cumulatively across the roadmap.)
 
-**Quota (the v1 core):**
-- **Codex: exact, on disk, but freshness-bounded.** Tail newest
-  `~/.codex/sessions/YYYY/MM/DD/rollout-*.jsonl`, parse `payload.type == "token_count"`, read
-  `payload.rate_limits` → `primary` (`window_minutes:300` = 5h) and `secondary`
-  (`window_minutes:10080` = weekly), each `used_percent`/`window_minutes`/`resets_at`.
-  `remaining = 100 - used_percent`. **Caveat:** the percent is only as fresh as the last
-  `token_count` event, so just after a reset it can read stale. Mark the gauge "as of last
-  activity" past `resets_at`, and refresh via `codex app-server` `account/rateLimits/read` when available.
-- **Claude: read-only OAuth endpoint (decided).** Read the OAuth token from the macOS Keychain,
-  call `GET https://api.anthropic.com/api/oauth/usage` with `anthropic-beta: oauth-2025-04-20`.
-  Returns `utilization` (0–1) + `resets_at` for `five_hour` and `seven_day`.
-  `remaining = (1-utilization)*100`. **No quota-spending probe.** On 4xx/5xx or auth failure, the
-  Claude gauge shows a **degraded** state; it never falls back to anything that consumes quota.
-- **Policy note (accepted):** uses your subscription OAuth token against an undocumented endpoint.
-  Your own account, read-only, the same call the official CLI makes. Owner has consciously accepted
-  this gray area for an internal tool. Revisit if vendor terms change.
-- **Do NOT use for remaining:** transcript `message.usage`, OTEL counters, `stats-cache.json`,
-  Admin Usage API. Consumed-only (no reset, no server cap).
-- **Plan-tier handling:** label windows by `window_minutes`, never field position. This box reads
-  Codex `plan_type: prolite`.
+## 4. Principles (non-negotiable)
 
-**Token / Keychain security:**
-- Read the OAuth token from the macOS Keychain via the **first-party `security` binary**
-  (`security find-generic-password ... -w`), which adds **zero third-party dependencies**. The
-  spike must discover the exact Keychain service/account name Claude Code stores it under.
-- **Deliberate tradeoff:** a "scoped Keychain API" would require a third-party native module
-  (keytar-style), which conflicts with the dependency-minimalism principle and is itself a
-  supply-chain surface. We choose the zero-dep OS binary and mitigate: hold the token only in
-  memory, never write it to disk/SQLite, never send it to the browser, scrub it from the
-  `security` subprocess output, and redact it from logs and panic traces.
-- Handle locked Keychain / denied permission as a **degraded auth** state ("Claude quota
-  unavailable, unlock Keychain"), not a retry loop.
+- **Vendor-neutral.** Claude and Codex are equal citizens; no path first-classes one.
+- **Local-first.** Runs on your machine, binds `127.0.0.1`, no public ingress.
+- **Read-only / non-invasive.** Never spends quota to measure quota, never mutates infra, never
+  changes how agents behave. v1 has no HTTP action endpoint. Act-surfaces arrive deliberately later.
+- **Lean + audited dependencies.** Mainstream, maintained, pinned, lockfiled, audited; no
+  unmaintained forks or sprawling libraries. (Relaxed from "near-zero" to fit Next.js/FastAPI.)
+- **Tokens never leak.** Read at call time, in memory only; never persisted, logged, or sent to the
+  browser; redacted from errors.
+- **Read the vendor's number, never guess.** Server-authoritative percentages; never hardcode caps.
+- **Degrade, never lie.** Parse/auth/stale errors render a clear degraded/stale state, never a blank
+  or a wrong number.
 
----
+## 5. Stack & architecture
 
-## 6. Premises and accepted caveats
+```
+web/      Next.js (App Router) + TypeScript  — UI, gauges, timeline, work-threads      (pnpm)
+api/      Python + FastAPI                    — collectors, integrations, event store, SSE (uv)
+PLAN.md   design source of truth
+.claude/  agent config (rules, hooks, commands, skills)
+```
 
-**Premises (agreed):** the quota panel is the v1 hero and lowest-risk-highest-value piece; v1 is
-built from scratch on built-ins (no unmaintained fork, near-zero deps); v1 is purely read-only
-with no command-exec surface; polling is adaptive with jitter and respects 429s.
+- **Frontend:** Next.js (App Router) + TypeScript (strict), pnpm. ESLint + Prettier, Vitest.
+  Consumes the FastAPI backend over HTTP + SSE. (Next's own server features stay light; the Python
+  backend is the brain.)
+- **Backend:** Python 3.12+, FastAPI, **uv** (uv.lock committed). **Ruff** (lint+format), **mypy**,
+  **pytest**. `httpx` for read-only vendor calls; stdlib `sqlite3` / `aiosqlite` for the event store;
+  SSE (and WebSocket later) for live updates. Lean dependency list.
+- **Event store:** one local SQLite DB, append-only normalized event rows
+  `{id, surface, source, session_id, work_thread_id NULLABLE, type, ts, severity, raw_json, ...}`.
+  Every collector and (later) integration writes the same shape; the nullable `work_thread_id`
+  lets the work-thread entity land later with no migration. This is the spine quota seeds and the
+  rest reuses.
+- **Collectors** (`api/`): pure, tolerant, unit-tested functions. v1 ships the Claude + Codex quota
+  collectors; v2 adds SaaS integration collectors behind the same interface.
+- Bind `127.0.0.1` only. Read endpoints only in v1.
 
-**Accepted caveats:**
-- **C1 — Claude quota is a gray-area dependency** (undocumented endpoint + subscription OAuth
-  token), accepted consciously. Read-only; degrades cleanly if it ever stops working.
-- **C2 — Consumed cost is best-effort for Codex** (relevant only to the v1.5+ dollar-metering pillar).
-- **C3 — Codex quota can read stale right after a reset** until a new event lands; marked as such.
-- **C4 — Jump-to-agent is a command-exec surface,** so it is deferred to v1.5 and is where the
-  stricter localhost hardening first applies.
-- **C5 — Private formats/endpoints break on CLI updates.** Tolerate `resets_at` vs
-  `resets_in_seconds`, null fields; degrade, never crash.
-- **C6 — Keychain via the `security` binary is a subprocess, not a scoped API.** Accepted to keep
-  the dependency footprint at zero; mitigated by output scrubbing and never persisting the token.
-- **C7 — Keychain ACL/prompt behavior under Bun-as-interpreter may differ from a signed app.**
-  Acceptable for an internal v1; expect a possible Keychain access prompt for the `security` call.
+## 6. v1 quota mechanism (verified on this machine; Codex-reviewed)
 
----
+- **Codex: exact, on disk.** `~/.codex/sessions/YYYY/MM/DD/rollout-*.jsonl` → last `token_count`
+  event → `payload.rate_limits` → `primary` (`window_minutes:300`=5h) + `secondary`
+  (`window_minutes:10080`=weekly): `used_percent`, `resets_at`. `remaining = 100 - used_percent`.
+  Mark stale after `resets_at` until a new event; refresh via `codex app-server`
+  `account/rateLimits/read` when available. Label windows by `window_minutes`, never position.
+- **Claude: read-only OAuth endpoint.** OAuth token from the **macOS Keychain via `/usr/bin/security`**
+  → `GET https://api.anthropic.com/api/oauth/usage` (`anthropic-beta: oauth-2025-04-20`) →
+  `utilization` + `resets_at` for `five_hour`/`seven_day`. `remaining = (1-utilization)*100`.
+  **No quota-spending probe.** On failure → degraded gauge. Undocumented endpoint + subscription
+  token = gray area, consciously accepted for an internal tool; read-only; degrades cleanly.
+- **Do NOT use for remaining:** transcript `message.usage`, OTEL counters, Admin API (consumed-only).
+- **Token / subprocess safety:** spawn `/usr/bin/security` by absolute path + fixed argv (no shell);
+  token in memory only; scrub output; redact from logs/errors; locked/denied Keychain → degraded auth.
 
-## 7. Approaches considered
+## 7. v1 scope & caveats
 
-- **A. Build minimal from scratch on Bun built-ins (recommended).** Bun gives a built-in HTTP
-  server, built-in SQLite, native `fetch`, and native file-watch, so v1 needs **near-zero
-  third-party packages**: no HTTP client (use `fetch`), no DB driver, no web framework, no ws.
-  Keychain via the OS `security` binary. The v1 feature surface is tiny (two collectors + four
-  gauges), so re-deriving it is cheap and we own and audit every line. Read **claumon / CodexBar /
-  codex-ratelimit as references** for the on-disk/endpoint formats; depend on none of them.
-  **Effort S–M, risk Low.**
-- **B. Fork claumon — rejected.** Unmaintained, and forking means inheriting an un-audited
-  transitive tree. The only thing it offered (a working Claude pipeline) is a Keychain read plus
-  one GET, trivial to rebuild. Supply-chain trust kills this option.
-- **C. Fork CodexBar — reference only.** Native macOS Swift menu-bar app; useful to *read* for the
-  Codex `rate_limits` parse, but a third-party codebase in another language, not a base.
+**In v1 (quota beachhead, read-only):** Claude + Codex quota collectors; four gauges (Claude 5h/
+weekly, Codex 5h/weekly) with remaining % + reset countdown; maximize-usage UX (headroom nudge,
+throttle warning, cross-agent visibility); out-of-tab OS notifications; the event-store spine;
+token/subprocess/localhost security; degraded/stale states.
 
----
+**Caveats:** C1 Claude quota is a gray-area dependency (accepted). C2 Codex quota can read stale
+right after reset (marked). C3 private formats/endpoints break on CLI updates (tolerate + degrade).
+C4 Keychain via `security` is a subprocess (accepted; hardened). C5 Keychain ACL/prompt under a
+non-signed interpreter may differ (acceptable internal).
 
-## 8. Chosen path
+**Not in v1:** the watch-feed, consumed-cost metering, jump-to-agent (command-exec) → v1.5; SaaS
+integrations + actions → v2; work-threads + AWS → later.
 
-**Build minimal from scratch on Bun built-ins (Approach A).** Execution order follows the spike:
-**prove Claude first** (the risk), then wire Codex (exact), then the cross-agent UI.
+## 8. Roadmap (beachhead → full Mission Control)
 
-- **v1:** four-gauge cross-agent quota panel + headroom nudges + throttle warnings, built on Bun
-  built-ins. **Read-only local/HTTP I/O, no agent/control command execution, no transcript parsing, near-zero deps.**
-- **v1.5:** the read-only agent watch-feed (readable transcripts) + consumed token/cost metering +
-  jump-to-agent (allowlisted local command). This is where the command-exec surface and its
-  stricter localhost hardening first apply.
-- **v2:** collaboration surfaces (Slack first) + Vercel + a guarded action endpoint; Slack/push alerts.
-- **later:** work-threads + 3-leg artifact linking; opt-in shaping hooks; **un-table AWS** as a
-  read-only cost/idle watch (the parked differentiator that closes pain #2).
+- **v1 — Quota beachhead.** The four-gauge cross-agent quota panel + the event-store spine. (This plan.)
+- **v1.5 — Agent watch-feed.** Read-only rendered transcripts + consumed token/cost metering +
+  jump-to-agent (first command-exec surface; stricter localhost hardening lands here).
+- **v2 — Collaboration surfaces + the Timeline.** Slack (first, for the buried-items pain), then
+  Asana, GitHub, Drive, Vercel — watch + act behind a guarded action endpoint. The unified Timeline
+  becomes real once multiple surfaces feed it.
+- **v3 — Work-threads.** Promote the work-thread to a first-class entity with 3-leg artifact linking
+  (auto-capture from the tool stream, by-convention, manual). This is the "lose the thread" cure.
+- **later — AWS read-only cost/idle watch** (closes pain #2), opt-in pre-prompt shaping hooks.
 
----
-
-## 9. v1 architecture (quota-only, read-only, near-zero deps)
-
-- **Base:** a single Bun process on `127.0.0.1` using **built-ins only**: built-in HTTP server,
-  built-in SQLite, native `fetch`, native file-watch (with a polling fallback). One hand-written
-  HTML/vanilla-JS page. `Bun.serve` must explicitly set `hostname: "127.0.0.1"` (it defaults to
-  `0.0.0.0`, which would silently break the no-public-ingress promise); the SSE endpoint must
-  disable the idle timeout (`server.timeout(req, 0)`). **Dependency budget: zero third-party runtime
-  packages as the target; anything added must be maintained, pinned, lockfile-committed, and small
-  enough to read in full.**
-- **Claude collector:** OS `security` binary → token → read-only `fetch GET /api/oauth/usage` →
-  `remaining` + reset for `five_hour` and `seven_day`. No probe. On failure: degraded gauge.
-  Adaptive polling ~60s with jitter; respect 429 with backoff.
-- **Codex collector:** prefer `account/rateLimits/read` (app-server) when reachable; else file-watch
-  newest rollout JSONL last `token_count` `rate_limits`. Emit per window `{window, remaining,
-  resets_at, plan_type, blocked, stale}` for `primary`/`secondary`. Poll on change or 30–60s.
-- **Render:** four labeled gauges, each "N% left, resets in HH:MM", plan label per agent, red on
-  blocked or remaining < ~5%, the headroom nudge, and a **"data degraded / stale"** badge per
-  collector on schema/auth/stale error (never a blank or a wrong number).
-- **Alerts:** local OS/desktop notification on throttle-warning and unused-headroom nudge (via the
-  OS notifier binary, no package).
-- **Localhost hardening:** the HTTP surface exposes **only read endpoints (no action endpoint)**, but
-  still set an Origin check + CSRF protection + a random per-session token as a baseline, and lock
-  down SQLite file perms. The HTTP action surface and its stricter hardening arrive in v1.5.
-- **Subprocess hardening:** spawn `/usr/bin/security` and the notifier by **absolute path with a
-  fixed argv array, never via a shell**; never pass the token as an argument; cap and scrub captured
-  stdout/stderr; redact the token before any error is wrapped or logged; never log the child-process
-  object. (Leakage risk is via stdout/crash dumps/logs, not argv.)
-- **Storage:** built-in SQLite, append-only event rows with a nullable `work_thread_id` for later.
-
-**Cut from v1:** the agent watch-feed and jump-to-agent (→ v1.5); consumed cost metering (→ v1.5);
-Claude per-model weekly, Codex monthly, burn-rate forecasting, historical charts. Four gauges first.
-
----
-
-## 10. First spike (do this before anything else)
+## 9. First spike (do this before anything else)
 
 About a day, throwaway. The riskiest bet is the **Claude quota path**, so prove it first.
 
-1. **Claude quota (the risk).** Read the OAuth token from the macOS Keychain via
-   `security find-generic-password -w` (discover the service/account name first), call
-   `GET /api/oauth/usage` with the beta header, print `remaining %` + reset for `five_hour` and
-   `seven_day`. No probe fallback. Spawn `/usr/bin/security` by absolute path with a fixed argv array
-   (no shell), scrub its output, and confirm the token never appears in args, logs, or errors. Verify
-   it survives a denied/locked Keychain and an unavailable endpoint by entering a clean degraded state.
-2. **Codex quota.** Read the newest rollout JSONL's last `token_count` `rate_limits`, print
-   remaining + reset for `primary`/`secondary`; verify the stale-after-reset case is flagged.
-3. **(v1.5 prep, optional) Tolerant transcript parse.** Only if you want to de-risk the watch-feed
-   now: read a large and a partially-written transcript from each agent without crashing.
+1. **Claude (the risk).** Token from Keychain via `/usr/bin/security find-generic-password -w`
+   (discover the service/account name; absolute path + fixed argv, no shell, scrub output), then
+   read-only `GET /api/oauth/usage`. Print remaining % + reset for `five_hour`/`seven_day`. No probe.
+   Verify clean degraded states on denied/locked Keychain and on 4xx/5xx; token never in args/logs.
+2. **Codex.** Parse newest rollout JSONL last `token_count` `rate_limits`; print remaining + reset
+   for `primary`/`secondary`; flag stale-after-reset.
 
-**Success bar (all required for v1):**
-- Four real remaining-% + reset numbers print for both agents.
-- The Claude collector reads the **Keychain via the `security` binary** (not a creds file), and
-  **no token is persisted or logged** anywhere.
-- Degraded states work: Keychain denied, endpoint 4xx/5xx, and Codex-stale-after-reset all show a
-  clean degraded/stale badge rather than crashing or showing a wrong number.
-- 429/backoff behaves on the Claude endpoint.
-- The `security` call is spawned by **absolute path + fixed argv (no shell)**, its output scrubbed,
-  and the token never lands in args, logs, or errors.
-- **Dependency check:** the spike (and the v1 design it implies) uses **only Bun built-ins + the OS
-  `security`/notifier binaries**; any third-party package considered is maintained, pinned, and
-  small enough to read in full, with a noted reason.
+**Success:** four real numbers; no token persisted/logged; degraded states work; 429/backoff on the
+Claude endpoint. Retires the only real risk; the rest is build.
 
-Passing this retires the Claude access risk, the only thing between us and the v1 hero.
+## 10. Market position
 
----
+The agent-quota niche is small and split (claumon = Claude-only web; CodexBar = both agents, native
+menu-bar; ccusage/clawmetry = consumed-only). We build the quota slice from scratch (lean, audited).
+But the **product** is not in that niche: no one ships a neutral, local-first command center that
+fuses agent state with collaboration, infra, and storage surfaces into one watch/act pane. That
+fusion (and the parked AWS/infra corner) is the durable differentiation; quota is just how we land.
 
-## 11. Market position
+## 11. Open questions
 
-claumon (Claude-only, web) and CodexBar (both agents, native menu-bar) are useful **references**
-for the data formats, but claumon is unmaintained and we depend on neither: v1 is built from
-scratch on built-ins. No shipping product is a neutral cross-agent quota pane that grows into a
-watch-feed and, later, multi-surface fusion. For an internal tool, owning a tiny audited codebase
-is the point. Durable differentiation (multi-surface fusion, the parked AWS/infra watch corner)
-returns in v2+.
+- Confirm caveats C1–C5.
+- Form factor: web tab vs a menu-bar companion for the always-glanceable gauges (not exclusive).
+- Alert channel beyond local OS notification (Slack/push) — when.
+- v2 surface order after Slack.
 
----
+**Resolved:** product = Mission Control (quota = v1 beachhead); stack = Next.js/TS + Python/FastAPI;
+Claude quota = read-only `/api/oauth/usage` via Keychain `security` binary, no probe; v1 read-only,
+no command-exec surface.
 
-## 12. Open questions
+## 12. Success criteria
 
-- Confirm caveats C1–C7.
-- **Stack:** build from scratch on Bun built-ins (recommended) — confirm, or prefer another
-  minimal-dependency runtime?
-- **Keychain access:** OS `security` binary (zero-dep, recommended) vs a vetted native module — confirm.
-- **Form factor:** web tab vs a menu-bar widget for always-glanceable gauges? (Not mutually exclusive long-term.)
-- Alert channel (v1 default local OS notification; pull Slack/push forward?).
-- When (if) to un-table AWS as a read-only cost watch.
-
-**Resolved:** Claude quota source = read-only `GET /api/oauth/usage` via Keychain token (read with
-the OS `security` binary), no active probe. v1 is **quota-only** (pure read-only, no command-exec
-surface). Build base = **from scratch on Bun built-ins**; claumon dropped for supply-chain /
-maintenance reasons. Watch-feed, consumed-cost metering, and jump-to-agent are **v1.5**.
-
----
-
-## 13. Success criteria
-
-- Four live gauges show **remaining quota + reset countdown** for both agents, from the vendors'
-  own numbers (no hardcoded caps), and **without spending any quota to read it**.
-- You can glance and tell **which agent has headroom** and choose to route the next job there.
-- You stop **wasting quota** at window reset and stop getting surprised by throttling mid-task.
-- Your OAuth token is **never persisted, logged, or exposed to the browser.**
-- The v1 runtime depends on **near-zero third-party packages** (Bun built-ins + OS `security`/
-  notifier binaries); the lockfile is committed and every dependency is audited.
-- The panel shows a **degraded/stale badge**, never a blank or a wrong number, when a format or
-  endpoint changes.
+**v1:** four live gauges show remaining quota + reset for both agents from the vendors' own numbers,
+without spending quota; you see which agent has headroom and route accordingly; you stop wasting
+quota and getting throttled; token never persisted/logged/exposed; degraded/stale never lies.
+**Product:** one place that answers "what is the state of everything" so context-switching stops
+costing you the day.
