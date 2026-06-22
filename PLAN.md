@@ -1,8 +1,10 @@
-# Mission Control — Plan (v4.0)
+# Mission Control — Plan (v4.1)
 
 **Status:** Reframed + stack locked. **Product = Mission Control** (a local-first command center
 over the whole dev stack + AI agents). **v1 beachhead = the cross-agent quota panel** (not the
-product's identity). **Stack = Next.js + TypeScript (`web/`) + Python/FastAPI (`api/`).**
+product's identity). **Stack = Next.js + TypeScript (`web/`) + Python/FastAPI (`api/`).** Codex verdict on v4.0: "ship
+as the v1 plan"; **v4.1** folds in its P1 refinements (event-store scope + scrub, SSE topology,
+spike backoff).
 **Date:** 2026-06-22
 **Owner:** Umar Ali
 **Type:** Internal tool. Solo dev / small team. Built to be useful fast.
@@ -87,11 +89,16 @@ PLAN.md   design source of truth
 - **Backend:** Python 3.12+, FastAPI, **uv** (uv.lock committed). **Ruff** (lint+format), **mypy**,
   **pytest**. `httpx` for read-only vendor calls; stdlib `sqlite3` / `aiosqlite` for the event store;
   SSE (and WebSocket later) for live updates. Lean dependency list.
-- **Event store:** one local SQLite DB, append-only normalized event rows
-  `{id, surface, source, session_id, work_thread_id NULLABLE, type, ts, severity, raw_json, ...}`.
-  Every collector and (later) integration writes the same shape; the nullable `work_thread_id`
-  lets the work-thread entity land later with no migration. This is the spine quota seeds and the
-  rest reuses.
+- **Event store:** one local SQLite DB (WAL mode, simple migrations, a retention cap), append-only
+  normalized rows `{id, surface, source, session_id, work_thread_id NULLABLE, type, ts, severity,
+  payload, ...}`. The nullable `work_thread_id` lets the work-thread entity land later with no
+  migration. **In v1 the only rows are quota snapshots, collector status, and alerts** — the
+  Timeline is NOT built early. **`payload` is scrubbed before persistence: never store tokens, auth
+  headers, or auth-bearing errors** (this is how "tokens never leak" survives an event store).
+- **SSE topology:** the browser subscribes **directly to the FastAPI SSE endpoint on `127.0.0.1`**
+  with a strict Origin/CORS allowlist. Do not proxy SSE through Next (buffering/runtime hazards).
+- **Dev/run:** one command brings up both runtimes (`/dev`), with **pinned Node and Python
+  versions** and a health check each; everything binds `127.0.0.1`.
 - **Collectors** (`api/`): pure, tolerant, unit-tested functions. v1 ships the Claude + Codex quota
   collectors; v2 adds SaaS integration collectors behind the same interface.
 - Bind `127.0.0.1` only. Read endpoints only in v1.
@@ -146,7 +153,8 @@ About a day, throwaway. The riskiest bet is the **Claude quota path**, so prove 
 1. **Claude (the risk).** Token from Keychain via `/usr/bin/security find-generic-password -w`
    (discover the service/account name; absolute path + fixed argv, no shell, scrub output), then
    read-only `GET /api/oauth/usage`. Print remaining % + reset for `five_hour`/`seven_day`. No probe.
-   Verify clean degraded states on denied/locked Keychain and on 4xx/5xx; token never in args/logs.
+   Use a short HTTP timeout (~5s) and exponential backoff on 429/5xx with a retry cap. Verify clean
+   degraded states on denied/locked Keychain and on 4xx/5xx; token never in args/logs.
 2. **Codex.** Parse newest rollout JSONL last `token_count` `rate_limits`; print remaining + reset
    for `primary`/`secondary`; flag stale-after-reset.
 
@@ -163,7 +171,7 @@ fusion (and the parked AWS/infra corner) is the durable differentiation; quota i
 
 ## 11. Open questions
 
-- Confirm caveats C1–C5.
+- Caveats C1–C5: accepted by the owner (see §7); revisit only if a vendor changes terms.
 - Form factor: web tab vs a menu-bar companion for the always-glanceable gauges (not exclusive).
 - Alert channel beyond local OS notification (Slack/push) — when.
 - v2 surface order after Slack.
