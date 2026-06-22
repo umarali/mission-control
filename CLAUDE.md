@@ -83,6 +83,11 @@ Use the `/check` command to run lint + types + tests across both. Use `/dev` to 
 
 - **Never commit secrets.** Tokens live in the OS Keychain and are read at runtime. A PreToolUse
   hook blocks writing `.env`/secret files and pasting token-shaped strings; do not work around it.
+- **Coding agents touch zero credentials.** You (Claude Code / Codex editing this repo) must never
+  read the Keychain, `~/.ssh`, `~/.aws`, or any auth file. The `security` CLI and those paths are
+  denied + guarded. Only the *running app* reads a credential, and only through one tiny isolated
+  reader module that holds it in memory for a single read-only call and returns **numbers, never the
+  token** (never logged, persisted, or sent to the browser).
 - Use `.env.example` for documenting config keys (no real values).
 - Localhost is not an auth boundary: the HTTP surface is read-only, and still sets an Origin check,
   CSRF protection, and a random per-session token (PLAN.md §9).

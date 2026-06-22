@@ -29,8 +29,14 @@
       "Read(./.env)",
       "Read(./.env.*)",
       "Read(./secrets/**)",
+      "Read(~/.ssh/**)",
+      "Read(~/.aws/**)",
+      "Read(~/.claude/.credentials.json)",
+      "Read(~/.codex/auth.json)",
       "Bash(curl:*)",
-      "Bash(wget:*)"
+      "Bash(wget:*)",
+      "Bash(security:*)",
+      "Bash(/usr/bin/security:*)"
     ]
   },
   "hooks": {
