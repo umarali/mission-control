@@ -1,25 +1,42 @@
-# deps / build
+# === Node / Next.js (web/) ===
 node_modules/
+.next/
+out/
 dist/
 build/
+*.tsbuildinfo
+.eslintcache
 
-# local data / state (never commit the SQLite store)
+# === Python (api/) ===
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.mypy_cache/
+.ruff_cache/
+.pytest_cache/
+
+# === local data / state (never commit the SQLite store) ===
 *.db
 *.sqlite
 *.sqlite3
 data/
 
-# secrets — NEVER commit (tokens live in the OS Keychain, not in the repo)
+# === secrets — NEVER commit (tokens live in the OS Keychain) ===
 .env
 .env.*
+!.env.example
 *.pem
 *.key
 secrets/
 
-# os / editor
+# === Claude Code (commit shared config; ignore local overrides) ===
+.claude/settings.local.json
+
+# === os / editor ===
 .DS_Store
 *.log
 .vscode/
 .idea/
 
-# NOTE: bun.lock IS committed on purpose (dependency budget / audited, pinned deps)
+# NOTE: pnpm-lock.yaml / uv.lock / bun.lock ARE committed on purpose (audited, pinned deps).
