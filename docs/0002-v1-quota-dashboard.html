@@ -1,0 +1,65 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>0002 — v1 quota dashboard (built) — Mission Control KB</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <main class="wrap">
+    <header class="brand">
+      <img class="brandmark" src="logo.svg" width="26" height="26" alt="" />
+      <span class="wordmark">Mission Control</span>
+      <span class="brand-tag">radar</span>
+      <span class="spacer"></span>
+      <a href="index.html">Knowledge Base</a>
+    </header>
+    <h1>0002 &mdash; v1 quota dashboard (built)</h1>
+    <p class="meta">2026-06-23 &middot; Shipped &middot; Umar + Claude</p>
+    <p>
+      <span class="chip">area: api + web</span>
+      <span class="chip">credential-free</span>
+      <span class="chip">issues: #1-#10, #14 closed</span>
+    </p>
+
+    <h2>Problem</h2>
+    <p>The plan, decisions, and the proven data pipeline existed; v1 needed to actually <em>be</em> a
+      running dashboard. Two constraints shaped it: it must be <strong>credential-free</strong> (the
+      owner did not want the app, or the coding agents, touching the Keychain), and it must look like
+      one product with the docs.</p>
+
+    <h2>Solution</h2>
+    <p>A working vertical slice, built from scratch on the agreed stack:</p>
+    <ul>
+      <li><strong><code>api/</code> (FastAPI + uv).</strong> Pure, tolerant collectors:
+        <code>codex.py</code> parses remaining windows from the rollout <code>rate_limits</code>;
+        <code>claude.py</code> sums consumed tokens from the transcript <code>message.usage</code>.
+        Read-only endpoints <code>/api/quota</code>, <code>/api/events</code> (SSE), <code>/api/health</code>,
+        bound to 127.0.0.1, CORS to the web dev origin only. <strong>100% test coverage</strong> on the
+        pure logic (15 tests incl. degraded cases); ruff + mypy strict clean.</li>
+      <li><strong><code>web/</code> (Next.js + TS).</strong> A branded dashboard: Codex 5h/weekly
+        gauges (remaining % + reset countdown, ok/warn/crit colors, headroom nudge, throttle warning)
+        and a Claude consumed-tokens meter, live via SSE with a fetch fallback and clean
+        degraded / api-down states. DESIGN.md tokens, system fonts, no Tailwind.</li>
+      <li><strong>Credential-free by construction.</strong> Both agents are read from local files
+        only — no Keychain, no OAuth, no network to the vendors. The Claude remaining-window path is
+        deferred. The verify-gate Stop hook (typecheck + mypy) is active and green.</li>
+    </ul>
+    <div class="callout">Verified live on the owner's real data: Codex 5h 98% / weekly 57% remaining;
+      Claude ~220M tokens this session (cache_read dominant). Screenshot shared with the owner.</div>
+
+    <h2>Context</h2>
+    <p><strong>Run it:</strong> <code>uv --directory api run uvicorn missioncontrol.main:app --host
+      127.0.0.1 --port 8787</code> and <code>pnpm -C web dev</code>, then open
+      <code>http://localhost:3000</code>.</p>
+    <p><strong>Deferred from v1</strong> (issues left open): SQLite event-store persistence (#5; v1
+      computes snapshots live), out-of-tab OS notifications (#11; in-UI warning/nudge only), token +
+      subprocess hardening (#12; N/A while credential-free), CSRF/session-token (#13; read-only API).</p>
+    <p><strong>Next:</strong> v1.5 (agent watch-feed + consumed-cost), v2 (collaboration surfaces,
+      Slack first), then work-threads and the parked AWS watch. See <code>PLAN.md</code> §8.</p>
+
+    <footer>Entry 0002 &middot; Mission Control Knowledge Base</footer>
+  </main>
+</body>
+</html>

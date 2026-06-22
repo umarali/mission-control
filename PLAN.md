@@ -1,5 +1,11 @@
 # Mission Control — Plan (v4.1)
 
+> **v1 SHIPPED (2026-06-23).** Built + committed: `api/` (FastAPI, 100% covered) + `web/` (Next.js
+> branded dashboard), verified on real data — see knowledge-base entry 0002. **Decision update:**
+> v1 is **credential-free** — Claude shows **consumed tokens** (transcript), Codex shows
+> **remaining windows** (rollout). The Keychain/OAuth Claude remaining-window path in §6/§9 is
+> **deferred**, not used in v1.
+
 **Status:** Reframed + stack locked. **Product = Mission Control** (a local-first command center
 over the whole dev stack + AI agents). **v1 beachhead = the cross-agent quota panel** (not the
 product's identity). **Stack = Next.js + TypeScript (`web/`) + Python/FastAPI (`api/`).** Codex verdict on v4.0: "ship
