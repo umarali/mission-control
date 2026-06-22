@@ -109,6 +109,29 @@ When a request matches a skill, invoke it via the Skill tool. Key routes:
 - Pre-merge diff check → `/review` · Independent second opinion → `/codex`
 - Ship / PR → `/ship`
 
+## How we work (agentic workflow)
+
+Operating practices from Anthropic's published guidance. The deterministic ones are enforced by
+hooks; the rest are how to drive the loop here.
+
+- **Verify with evidence before claiming done.** Run `/check` and paste the result; for UI,
+  screenshot vs. the target. Never assert success, show it. A `verify-gate` Stop hook also blocks
+  turn-end on type errors once `web/`/`api/` exist (disable: `touch .claude/.verify-gate-off`).
+- **Just-in-time, right-sized planning.** Multi-file or uncertain: plan mode, write a short spec
+  (files, interfaces, out-of-scope, the verification step), then execute from a fresh session.
+  One-line diffs: skip it. No heavy docs ahead of need.
+- **Context is the scarce resource.** `/clear` between unrelated tasks; after two failed
+  corrections, `/clear` and rewrite the prompt instead of patching on top. On compaction, preserve:
+  read-only, tokens-never-leak, vendor-neutral, and the modified-files + test-commands list.
+- **Headless runs are bounded.** Unattended `claude -p` runs MUST set `--max-turns` (a focused fix
+  rarely needs >10) and a budget ceiling; log `total_cost_usd` from `--output-format json`. Budgets
+  are per-invocation; fan-out multiplies them.
+- **Fresh-context review before a PR.** `/code-review` (or `/codex`) on the diff vs. the plan;
+  tell it to flag only correctness/requirement gaps (an open-ended "find problems" review
+  manufactures scope creep against our lean-deps rule).
+- **Self-improve.** End a substantial session by proposing CLAUDE.md additions for anything you had
+  to correct, instead of re-correcting next time.
+
 ## Recommended plugins / tooling (install at user level)
 
 - **gstack** (already installed) — planning, review, QA, ship workflows.

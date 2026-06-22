@@ -19,8 +19,8 @@ except Exception:
 # Allow documentation templates.
 case "$fp" in
   *.env.example|*.env.sample|*.env.template) : ;;
-  *.env|*/.env|*.env.*|*.pem|*.key|*/secrets/*|*/.claude/settings.local.json)
-    echo "BLOCKED by guard-secrets: refusing to write secret-bearing file '$fp'. Tokens live in the OS Keychain, never the repo. Use a .env.example (no real values) to document config." >&2
+  *.env|*/.env|*.env.*|*.pem|*.key|*/secrets/*|*/.ssh/*|*id_rsa*|*id_ed25519*|*/.claude/settings.local.json)
+    echo "BLOCKED by guard-secrets: refusing to read/write secret-bearing file '$fp'. Tokens live in the OS Keychain, never the repo. Use a .env.example (no real values) to document config." >&2
     exit 2
     ;;
 esac
