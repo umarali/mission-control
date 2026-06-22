@@ -88,11 +88,20 @@ Use the `/check` command to run lint + types + tests across both. Use `/dev` to 
   CSRF protection, and a random per-session token (PLAN.md §9).
 - If you spot a secret in the tree or history, stop and flag it immediately.
 
-## Testing
+## Testing & coverage
 
-- Every collector parser gets unit tests against real-shaped fixtures, including the degraded
-  cases (missing fields, stale-after-reset, denied Keychain, endpoint 4xx/5xx).
-- Don't mock away the thing under test. Test the parser with captured (sanitized) payloads.
+- **Target 100% coverage on pure logic.** Our collectors/parsers are deliberately pure, so they
+  should hit 100%. Any deliberate exclusion needs an inline reason: Python
+  `# pragma: no cover  # reason: ...`, TS `/* c8 ignore next -- reason: ... */`. No silent gaps.
+- **Be pragmatic on I/O glue** (subprocess, network, DB wiring): cover it where feasible, and
+  isolate the untestable seam behind a thin adapter so the logic around it stays 100%.
+- Every collector parser gets unit tests against real-shaped fixtures, including the degraded cases
+  (missing fields, stale-after-reset, denied Keychain, endpoint 4xx/5xx). Don't mock away the thing
+  under test; test the parser with captured (sanitized) payloads.
+- **Coverage is gated in `/check`:** `pytest --cov` with a `fail-under` threshold (100% for `api/`
+  logic modules), `vitest --coverage` with thresholds for `web/`. 100% line coverage is not
+  correctness, so we keep it paired with the degraded-case fixtures above. Coverage config is wired
+  in during scaffolding (issues #3, #4, #14).
 
 ## Git / PRs
 
@@ -126,11 +135,31 @@ hooks; the rest are how to drive the loop here.
 - **Headless runs are bounded.** Unattended `claude -p` runs MUST set `--max-turns` (a focused fix
   rarely needs >10) and a budget ceiling; log `total_cost_usd` from `--output-format json`. Budgets
   are per-invocation; fan-out multiplies them.
+- **Token efficiency: native prompt caching.** Cache stable system prompts / large stable prefixes
+  (cache reads are ~10% of input cost); use the Batch API for non-interactive jobs. We evaluated and
+  **skipped Headroom** (in-band on our tokens, heavy deps, ~3% real bill savings on Claude traffic).
 - **Fresh-context review before a PR.** `/code-review` (or `/codex`) on the diff vs. the plan;
   tell it to flag only correctness/requirement gaps (an open-ended "find problems" review
   manufactures scope creep against our lean-deps rule).
 - **Self-improve.** End a substantial session by proposing CLAUDE.md additions for anything you had
   to correct, instead of re-correcting next time.
+
+## Documentation & handoff (knowledge base)
+
+We keep an HTML knowledge base in `docs/` so any newcomer or onboarding agent can grasp what has
+been done and why. It is the durable memory of the project; chat history is not.
+
+- **Format:** `docs/index.html` is the home; each unit of work is an entry `docs/NNNN-<slug>.html`
+  built from `docs/_template.html`, structured **problem → solution → context** (the same shape the
+  `/teach` skill uses). Self-contained HTML, no external dependencies.
+- **Quality bar:** comprehensive but brief. Capture the *why* and the decisions/edge-cases, not a
+  transcript. If a line would not help a new teammate or agent, cut it.
+- **When to update (triggers):** before handing off to a new agent, before starting a new task, and
+  at the context threshold below. Run **`/handoff`** to update the KB and emit a handoff prompt.
+- **Context handoff rule:** when you reach roughly **60–65% of the context window**, stop taking on
+  new work — update the knowledge base, run `/handoff` to produce a paste-ready handoff prompt, and
+  recommend starting a fresh agent. (Honest limit: an agent cannot precisely self-measure remaining
+  context, so treat this as a discipline + a cue to run `/handoff`, not a hard auto-trigger.)
 
 ## Recommended plugins / tooling (install at user level)
 

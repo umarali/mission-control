@@ -1,0 +1,52 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Mission Control — Knowledge Base</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <main class="wrap">
+    <h1>Mission Control — Knowledge Base</h1>
+    <p class="lede">The durable memory of this project. Read this before picking up work.
+      Chat history is not the record; this is.</p>
+
+    <p>Mission Control is a local-first command center to <strong>watch</strong> (and act on) the
+      activity across the dev stack and AI agents (Claude Code + Codex). The plan of record is
+      <code>PLAN.md</code>; the repo is
+      <a href="https://github.com/umarali/mission-control">umarali/mission-control</a>.</p>
+
+    <h2>How to use this</h2>
+    <ul>
+      <li><strong>New here (human or agent)?</strong> Read the entries below in order, then
+        <code>PLAN.md</code>. Ask for <code>/teach</code> if you want a guided walkthrough.</li>
+      <li><strong>Each entry</strong> is structured <strong>Problem &rarr; Solution &rarr;
+        Context</strong>: what the problem was and why, what was built and why that way (decisions +
+        edge cases), and why it matters / what it impacts.</li>
+      <li><strong>Quality bar:</strong> comprehensive but brief. The <em>why</em> and the decisions,
+        not a transcript.</li>
+    </ul>
+
+    <h2>When to add or update an entry</h2>
+    <p>Before handing off to a new agent, before starting a new task, or when an agent reaches
+      ~60&ndash;65% of its context window. Run <code>/handoff</code> to update the base and produce a
+      paste-ready handoff prompt. Start a new entry from <a href="_template.html">_template.html</a>.</p>
+
+    <h2>Entries</h2>
+    <ul class="entry-list">
+      <li>
+        <a href="0001-project-setup.html">0001 &mdash; Project scoping &amp; setup</a>
+        <span class="when">&middot; 2026-06-21 to 2026-06-23</span><br />
+        <span class="muted">From a broad "mission control" idea to a Codex-reviewed plan (v4.1),
+          a live repo, the agent config, and the v1 quota beachhead.</span>
+      </li>
+    </ul>
+
+    <footer>
+      Conventions live in <code>CLAUDE.md</code> &rarr; "Documentation &amp; handoff". Self-contained
+      HTML, no external dependencies &mdash; open any file directly in a browser.
+    </footer>
+  </main>
+</body>
+</html>

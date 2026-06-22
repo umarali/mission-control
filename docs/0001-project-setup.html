@@ -1,0 +1,86 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>0001 — Project scoping & setup — Mission Control KB</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <main class="wrap">
+    <p><a href="index.html">&larr; Knowledge Base</a></p>
+    <h1>0001 &mdash; Project scoping &amp; setup</h1>
+    <p class="meta">2026-06-21 to 2026-06-23 &middot; Done (build not started) &middot; Umar + Claude</p>
+    <p>
+      <span class="chip">area: planning + repo setup</span>
+      <span class="chip">links: PLAN.md (v4.1)</span>
+      <span class="chip">issues: #1&ndash;#18</span>
+    </p>
+
+    <h2>Problem</h2>
+    <p>Umar wanted a "mission control": one place to <strong>watch</strong> (and act on) the
+      significant activity across his dev stack and AI agents, instead of tab-hopping across Slack,
+      Asana, GitHub, Drive, AWS, Vercel, and the Claude Code + Codex IDE panels. The challenge was
+      not the idea, it was scoping an ambitious vision into something shippable without a rewrite,
+      while honoring a strong <strong>supply-chain caution</strong> (he dropped a dependency over
+      it, citing the axios + LiteLLM incidents).</p>
+    <p>Concrete pains driving it: costly/risky agent actions caught too late (a GPU left billing);
+      buried Slack/Asana/GitHub items; losing the thread on what an agent did across sessions; and
+      (biggest) context-switching so heavy you cannot tell what state anything is in. A later,
+      sharper pain became the v1 wedge: <strong>you cannot see how much agent quota you have left</strong>,
+      so you waste use-it-or-lose-it windows or hit limits mid-task.</p>
+
+    <h2>Solution</h2>
+    <p>We brainstormed the vision, then deliberately narrowed v1. Decisions, with the why:</p>
+    <ul>
+      <li><strong>Product = Mission Control; v1 beachhead = a cross-agent quota panel.</strong>
+        Four live gauges (Claude 5h/weekly, Codex 5h/weekly) showing remaining % + reset countdown,
+        framed to <em>maximize usage</em>. It is the highest-ROI, lowest-risk first slice and it
+        builds the agent-data pipeline (local reads, event store, live UI, token security) that the
+        watch-feed, integrations, and work-threads all reuse.</li>
+      <li><strong>AWS tabled.</strong> The read-only AWS cost/idle radar was the most differentiated
+        corner, but the owner removed it from v1 (no kill switch, no infra control). It returns
+        later as a read-only watch.</li>
+      <li><strong>Quota mechanism.</strong> Codex is exact on disk (<code>rate_limits</code> in the
+        rollout JSONL). Claude is a read-only <code>GET /api/oauth/usage</code> using the OAuth token
+        from the macOS Keychain (via <code>/usr/bin/security</code>); no quota-spending probe;
+        degrade if unavailable. Never hardcode plan caps; read the vendor's number.</li>
+      <li><strong>Stack = Next.js/TS (<code>web/</code>) + Python/FastAPI (<code>api/</code>).</strong>
+        Heavier than four gauges need, but the full product is a real app, so build on the real
+        stack now. Dependency principle relaxed from "near-zero" to "lean + audited + pinned"
+        (mainstream frameworks OK; unmaintained forks not). We dropped a planned fork (claumon) and
+        build the quota slice from scratch.</li>
+      <li><strong>Agent config.</strong> Repo + <code>CLAUDE.md</code> rules; hooks
+        (<code>guard-secrets</code> blocks secret read/write, <code>format</code>, and a
+        <code>verify-gate</code> Stop hook); commands (<code>/check</code>, <code>/dev</code>,
+        <code>/spike</code>, <code>/fix-issue</code>, <code>/handoff</code>); skills
+        (<code>quota-collector</code>, <code>teach</code>).</li>
+      <li><strong>Anthropic best practices</strong> applied (verify-with-evidence, JIT planning,
+        context hygiene, fresh-context review, headless budgets, self-improvement) after verifying
+        them against official docs and fact-checking X-attributed stats.</li>
+      <li><strong>Token efficiency:</strong> use native <strong>prompt caching</strong> (+ Batch API);
+        evaluated and <strong>skipped Headroom</strong> (in-band on our tokens, heavy deps, ~3% real
+        bill savings on Claude traffic).</li>
+    </ul>
+    <div class="callout">The plan went through <strong>six Codex review passes</strong> and lands at
+      <strong>v4.1, verdict "ship as the v1 plan"</strong>. Edge cases are caught in PLAN.md as
+      caveats C1&ndash;C7 (gray-area Claude endpoint, Codex stale-after-reset, Keychain subprocess,
+      CLI-format drift, etc.).</div>
+
+    <h2>Context</h2>
+    <p>Why it matters: this is the foundation every later surface stands on, and the principles
+      (read-only/non-invasive, tokens-never-leak, lean+audited deps, vendor-neutral, degrade-never-lie)
+      are now enforced by config, not just prose.</p>
+    <p><strong>What is next:</strong> the half-day <em>spike</em> (issues #1&ndash;#2) &mdash; prove
+      the Claude quota path via Keychain first (the only real unknown), then Codex. Then scaffold
+      <code>web/</code> + <code>api/</code> (#3&ndash;#4) and build the v1 gauges.</p>
+    <p><strong>Open decisions:</strong> menu-bar vs web-tab form factor; alert channel beyond local
+      OS notification; v2 surface order after Slack; when to un-table AWS.</p>
+    <p class="muted">Roadmap: v1 quota &rarr; v1.5 watch-feed + consumed-cost metering + jump-to-agent
+      &rarr; v2 collaboration surfaces (Slack first) + Vercel + Timeline &rarr; v3 work-threads &rarr;
+      later AWS watch + shaping hooks.</p>
+
+    <footer>Entry 0001 &middot; Mission Control Knowledge Base</footer>
+  </main>
+</body>
+</html>
