@@ -1,0 +1,25 @@
+# deps / build
+node_modules/
+dist/
+build/
+
+# local data / state (never commit the SQLite store)
+*.db
+*.sqlite
+*.sqlite3
+data/
+
+# secrets — NEVER commit (tokens live in the OS Keychain, not in the repo)
+.env
+.env.*
+*.pem
+*.key
+secrets/
+
+# os / editor
+.DS_Store
+*.log
+.vscode/
+.idea/
+
+# NOTE: bun.lock IS committed on purpose (dependency budget / audited, pinned deps)
