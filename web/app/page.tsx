@@ -28,6 +28,8 @@ type ClaudeConsumed = {
   total_tokens: number;
   events: number;
   degraded: string | null;
+  estimated_cost_usd: number | null;
+  pricing_as_of: string | null;
 };
 type Snapshot = {
   generated_at: number;
@@ -133,12 +135,29 @@ function MeterCard({ c }: { c: ClaudeConsumed }) {
     ["cache read", c.cache_read_input_tokens],
     ["cache write", c.cache_creation_input_tokens],
   ];
+  const cost =
+    c.estimated_cost_usd === null
+      ? null
+      : c.estimated_cost_usd.toLocaleString("en-US", {
+          style: "currency",
+          currency: "USD",
+          minimumFractionDigits: 2,
+          maximumFractionDigits: 2,
+        });
   return (
     <div className="card meter">
       <div className="big">{fmtNum(c.total_tokens)}</div>
       <div className="sub">
         tokens consumed · {fmtNum(c.events)} events · current session
       </div>
+      {cost !== null && (
+        <div className="cost">
+          ~{cost}{" "}
+          <span className="cost-note">
+            est. spend{c.pricing_as_of ? ` · rates ${c.pricing_as_of}` : ""}
+          </span>
+        </div>
+      )}
       <div className="breakdown">
         {rows.map(([k, v]) => (
           <div key={k} style={{ display: "contents" }}>

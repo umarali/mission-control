@@ -40,6 +40,8 @@ class ClaudeConsumed:
     total_tokens: int
     events: int
     degraded: str | None = None
+    estimated_cost_usd: float | None = None  # estimate from token counts × dated rate card
+    pricing_as_of: str | None = None  # date of the rate card used (None when unpriced)
 
 
 @dataclass
