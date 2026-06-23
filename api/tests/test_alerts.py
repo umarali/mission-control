@@ -39,6 +39,14 @@ def test_healthy_window_yields_no_alert() -> None:
     assert a == []
 
 
+def test_stale_window_yields_no_alert() -> None:
+    # A would-be crit (3% left) but stale: the number has rolled over, so do not alert on it.
+    a = alerts_from_snapshot(
+        _snap([{"window": "5h", "remaining_pct": 3.0, "blocked": False, "stale": True}])
+    )
+    assert a == []
+
+
 def test_headroom_when_unused_and_resetting_soon() -> None:
     # 60% left, 5h window, resets in 30 min (< 20% of 300 min) => use-it-or-lose-it.
     w = {

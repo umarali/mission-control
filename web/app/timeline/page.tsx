@@ -49,7 +49,7 @@ const fmtUsd = (n: number): string =>
     maximumFractionDigits: 2,
   });
 
-function summarizeCodex(p: Record<string, unknown>): string {
+function summarizeWindows(p: Record<string, unknown>): string {
   const windows = Array.isArray(p.windows) ? p.windows : [];
   const parts: string[] = [];
   for (const w of windows) {
@@ -57,14 +57,19 @@ function summarizeCodex(p: Record<string, unknown>): string {
     const ww = w as Record<string, unknown>;
     const rem = asNum(ww.remaining_pct);
     const label = asStr(ww.window) ?? "window";
-    if (rem !== null) parts.push(`${label} ${Math.round(rem)}%`);
+    if (rem === null) continue;
+    parts.push(
+      ww.stale === true ? `${label} stale` : `${label} ${Math.round(rem)}%`,
+    );
   }
-  return parts.length > 0 ? `${parts.join(" · ")} left` : "quota snapshot";
+  return parts.length > 0 ? `${parts.join(" · ")} left` : "";
 }
 
 function summarizeClaude(p: Record<string, unknown>): string {
-  // token counts persist as "<redacted>" (key matches the auth-key scrubber), so report what
-  // survives truthfully: message count + the cost estimate.
+  // Prefer the real remaining windows when present; otherwise the consumed meter (token counts
+  // persist as "<redacted>" since the key matches the auth scrubber, so lean on messages + cost).
+  const windows = summarizeWindows(p);
+  if (windows) return windows;
   const bits: string[] = [];
   const evs = asNum(p.events);
   const cost = asNum(p.estimated_cost_usd);
@@ -90,9 +95,8 @@ function summarize(e: MCEvent): string {
   if (e.type.startsWith("alert.")) return asStr(p.message) ?? kindLabel(e.type);
   if (e.type.startsWith("slack.")) return summarizeSlack(e.type, p);
   if (e.type === "quota.snapshot") {
-    if (e.surface === "codex") return summarizeCodex(p);
     if (e.surface === "claude") return summarizeClaude(p);
-    return "quota snapshot";
+    return summarizeWindows(p) || "quota snapshot";
   }
   if (e.type === "collector.status") {
     const d = asStr(p.degraded);

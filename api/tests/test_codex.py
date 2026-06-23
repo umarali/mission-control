@@ -68,13 +68,33 @@ def test_unknown_and_missing_window_minutes_and_null_used() -> None:
 def test_blocked_by_flag_and_by_zero_remaining() -> None:
     rl = {
         "primary": {"window_minutes": 300, "used_percent": 100.0},  # remaining 0 -> blocked
-        "secondary": {"window_minutes": 10080, "used_percent": 50.0,
-                      "rate_limit_reached_type": "weekly"},  # flag -> blocked
+        "secondary": {
+            "window_minutes": 10080,
+            "used_percent": 50.0,
+            "rate_limit_reached_type": "weekly",
+        },  # flag -> blocked
     }
     q = parse_codex_quota([_token_count(rl)])
     by = {w.window: w for w in q.windows}
     assert by["5h"].blocked is True
     assert by["weekly"].blocked is True
+
+
+def test_stale_after_reset_with_now() -> None:
+    rl = {
+        "primary": {"window_minutes": 300, "used_percent": 2.0, "resets_at": 100},  # past -> stale
+        "secondary": {"window_minutes": 10080, "used_percent": 50.0, "resets_at": 999},  # future
+    }
+    q = parse_codex_quota([_token_count(rl)], now=500)
+    by = {w.window: w for w in q.windows}
+    assert by["5h"].stale is True  # resets_at 100 < now 500
+    assert by["weekly"].stale is False  # resets_at 999 >= now 500
+
+
+def test_no_now_or_missing_resets_is_not_stale() -> None:
+    rl = {"primary": {"window_minutes": 300, "used_percent": 2.0}}  # no resets_at
+    assert parse_codex_quota([_token_count(rl)]).windows[0].stale is False  # now is None
+    assert parse_codex_quota([_token_count(rl)], now=500).windows[0].stale is False  # resets None
 
 
 def test_token_count_without_rate_limits_is_skipped() -> None:

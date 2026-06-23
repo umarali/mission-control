@@ -56,4 +56,5 @@ omit = [
   "missioncontrol/osnotify.py",
   "missioncontrol/launch.py",
   "missioncontrol/slacksource.py",
+  "missioncontrol/claudecreds.py",
 ]

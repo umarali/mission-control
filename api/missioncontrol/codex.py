@@ -19,28 +19,31 @@ def _label(window_minutes: int | None) -> str:
     return _LABELS.get(window_minutes, f"{window_minutes}min")
 
 
-def _window(raw: dict[str, Any]) -> Window:
+def _window(raw: dict[str, Any], now: int | None) -> Window:
     wm = raw.get("window_minutes")
     wm_int = wm if isinstance(wm, int) else None
     used = raw.get("used_percent")
     used_f = float(used) if isinstance(used, (int, float)) else None
     remaining = None if used_f is None else round(100.0 - used_f, 1)
     resets = raw.get("resets_at")
-    blocked = bool(raw.get("rate_limit_reached_type")) or (
-        remaining is not None and remaining <= 0
-    )
+    resets_int = resets if isinstance(resets, int) else None
+    blocked = bool(raw.get("rate_limit_reached_type")) or (remaining is not None and remaining <= 0)
+    # Stale-after-reset (C2): once resets_at has passed, the file still shows the pre-reset
+    # used_percent until a new event — flag it so the UI/alerts don't trust a number that has
+    # almost certainly rolled over to ~full.
+    stale = now is not None and resets_int is not None and resets_int < now
     return Window(
         window=_label(wm_int),
         window_minutes=wm_int,
         remaining_pct=remaining,
         used_pct=used_f,
-        resets_at=resets if isinstance(resets, int) else None,
+        resets_at=resets_int,
         blocked=blocked,
-        stale=False,
+        stale=stale,
     )
 
 
-def parse_codex_quota(records: Iterable[dict[str, Any]]) -> CodexQuota:
+def parse_codex_quota(records: Iterable[dict[str, Any]], *, now: int | None = None) -> CodexQuota:
     """Return the most recent rate-limit windows found in a Codex session's records."""
     last_rl: dict[str, Any] | None = None
     for obj in records:
@@ -58,7 +61,7 @@ def parse_codex_quota(records: Iterable[dict[str, Any]]) -> CodexQuota:
     for key in ("primary", "secondary"):
         raw = last_rl.get(key)
         if isinstance(raw, dict):
-            windows.append(_window(raw))
+            windows.append(_window(raw, now))
 
     if not windows:
         return CodexQuota(available=False, degraded="rate_limits had no usable windows")

@@ -27,6 +27,8 @@ def _num(value: Any) -> float | None:
 
 
 def _window_alert(surface: str, w: dict[str, Any], now: int | None) -> Alert | None:
+    if w.get("stale") is True:
+        return None  # the number has rolled over; don't alert on a value we know is outdated
     win = w.get("window")
     label = win if isinstance(win, str) else "unknown"
     remaining = _num(w.get("remaining_pct"))

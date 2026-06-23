@@ -79,6 +79,20 @@ class Alert:
 
 
 @dataclass
+class ClaudeQuota:
+    """Claude remaining-window quota, read from the OAuth usage endpoint (PLAN.md §6).
+
+    The credentialed counterpart to ``ClaudeConsumed``: server-authoritative ``utilization`` per
+    window → ``remaining = (1 - utilization) * 100``. Reuses ``Window`` so it renders with the same
+    gauge as Codex (vendor-neutral). Empty/odd responses degrade, never guess.
+    """
+
+    available: bool
+    windows: list[Window] = field(default_factory=list)
+    degraded: str | None = None
+
+
+@dataclass
 class SlackItem:
     """One normalized 'buried item' from Slack — a mention or a DM worth surfacing.
 

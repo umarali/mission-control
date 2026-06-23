@@ -12,9 +12,11 @@ from typing import Any
 
 from .alerts import alerts_from_snapshot
 from .claude import parse_claude_consumed
+from .claudecreds import claude_quota_enabled, fetch_claude_usage
+from .claudequota import parse_claude_quota
 from .codex import parse_codex_quota
 from .events import events_from_snapshot, make_event
-from .models import ClaudeConsumed, CodexQuota, Transcript
+from .models import ClaudeConsumed, ClaudeQuota, CodexQuota, Transcript
 from .notify import Notifier
 from .osnotify import os_send
 from .paths import newest_claude_transcript, newest_codex_rollout, read_jsonl
@@ -35,11 +37,25 @@ def get_store() -> EventStore:
     return _store
 
 
+def _claude_quota(now: int) -> ClaudeQuota:
+    """Claude remaining windows from the OAuth usage endpoint (credentialed, opt-in)."""
+    usage = fetch_claude_usage()
+    if usage is not None:
+        return parse_claude_quota(usage, now=now)
+    if claude_quota_enabled():
+        return ClaudeQuota(available=False, degraded="Claude usage unavailable (token or endpoint)")
+    return ClaudeQuota(
+        available=False, degraded="set MC_ENABLE_CLAUDE_QUOTA=1 to show remaining quota"
+    )
+
+
 def snapshot() -> dict[str, Any]:
     """Read both agents' newest local files and return the current quota/usage snapshot."""
+    now = int(time.time())
+
     codex_path = newest_codex_rollout()
     if codex_path is not None:
-        codex = parse_codex_quota(read_jsonl(codex_path))
+        codex = parse_codex_quota(read_jsonl(codex_path), now=now)
     else:
         codex = CodexQuota(available=False, degraded="no Codex sessions found")
 
@@ -58,11 +74,14 @@ def snapshot() -> dict[str, Any]:
             degraded="no Claude transcripts found",
         )
 
-    return {
-        "generated_at": int(time.time()),
-        "codex": asdict(codex),
-        "claude": asdict(claude),
-    }
+    # Claude gets BOTH: remaining-window gauges (primary) + the consumed-token meter (secondary).
+    claude_dict = asdict(claude)
+    cq = _claude_quota(now)
+    claude_dict["windows"] = [asdict(w) for w in cq.windows]
+    claude_dict["quota_available"] = cq.available
+    claude_dict["quota_degraded"] = cq.degraded
+
+    return {"generated_at": now, "codex": asdict(codex), "claude": claude_dict}
 
 
 def _record_slack() -> None:
