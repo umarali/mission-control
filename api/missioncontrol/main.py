@@ -17,7 +17,7 @@ from fastapi.responses import JSONResponse, StreamingResponse
 
 from .redact import redact_text
 from .security import host_allowed, new_session_token, origin_allowed
-from .service import get_store, record_snapshot, snapshot
+from .service import get_store, record_snapshot, snapshot, transcript
 
 POLL_SECONDS = 30
 
@@ -75,6 +75,13 @@ def session(request: Request) -> dict[str, str]:
 @app.get("/api/quota")
 def quota() -> dict[str, object]:
     return snapshot()
+
+
+@app.get("/api/transcript")
+def transcript_endpoint(agent: str = "claude", limit: int = 200) -> dict[str, object]:
+    """Read-only rendered transcript (watch-feed) for an agent's newest local session."""
+    limit = max(1, min(limit, 1000))
+    return transcript(agent, limit=limit)
 
 
 @app.get("/api/timeline")

@@ -43,6 +43,27 @@ class ClaudeConsumed:
 
 
 @dataclass
+class Turn:
+    """One normalized turn in a rendered agent transcript (vendor-neutral reading view)."""
+
+    role: str  # "user" | "assistant" | "tool" | "system" | "unknown"
+    text: str  # visible text (redacted; thinking/reasoning excluded)
+    tools: list[str] = field(default_factory=list)  # tool names invoked in this turn
+    ts: str | None = None  # original timestamp string (ISO), if present
+
+
+@dataclass
+class Transcript:
+    """A rendered, read-only transcript for one agent session."""
+
+    available: bool
+    agent: str  # "claude" | "codex"
+    turns: list[Turn] = field(default_factory=list)
+    session_id: str | None = None
+    degraded: str | None = None
+
+
+@dataclass
 class Alert:
     """A derived, actionable signal about a quota window (throttle risk or unused headroom)."""
 
