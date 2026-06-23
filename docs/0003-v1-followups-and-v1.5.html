@@ -1,0 +1,96 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>0003 — v1 follow-ups + v1.5 watch-feed — Mission Control KB</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <main class="wrap">
+    <header class="brand">
+      <img class="brandmark" src="logo.svg" width="26" height="26" alt="" />
+      <span class="wordmark">Mission Control</span>
+      <span class="brand-tag">radar</span>
+      <span class="spacer"></span>
+      <a href="index.html">Knowledge Base</a>
+    </header>
+    <h1>0003 &mdash; v1 follow-ups + v1.5 watch-feed</h1>
+    <p class="meta">2026-06-23 &middot; Shipped (v2+ handed off) &middot; Umar + Claude</p>
+    <p>
+      <span class="chip">area: api + web</span>
+      <span class="chip">PLAN.md §5, §7, §8</span>
+      <span class="chip">issues: #5, #11, #12 (partial), #13, #15</span>
+    </p>
+
+    <h2>Problem</h2>
+    <p>v1 (entry 0002) shipped the credential-free quota dashboard but left the <em>spine</em> and the
+      next rung of the roadmap unbuilt. The owner asked to "finish everything, one after another,"
+      so this session closed the open v1 follow-ups and built all of v1.5 — the agent watch-feed,
+      consumed-cost metering, and jump-to-agent (the first command-exec surface).</p>
+
+    <h2>Solution</h2>
+    <p>Built on the existing testability split — pure logic at 100% coverage, I/O seams isolated and
+      omitted from the gate (and still exercised by integration tests). <strong>95 tests, 100% on
+      pure logic, ruff + mypy + eslint + tsc all clean.</strong></p>
+    <ul>
+      <li><strong>Redaction (#12, relevant slice).</strong> <code>redact.py</code>: mask token-shaped
+        strings in text; recursively scrub auth-bearing keys/values before persistence. The
+        load-bearing primitive that lets an event store satisfy "tokens never leak."</li>
+      <li><strong>Event-store spine (#5).</strong> <code>events.py</code> + <code>alerts.py</code>
+        (pure) derive scrubbed <code>quota.snapshot</code> / <code>collector.status</code> /
+        <code>alert.*</code> rows from a snapshot; <code>store.py</code> persists them in one local
+        SQLite DB (WAL, <code>user_version</code> migration, <strong>0600</strong> perms, retention
+        cap). <code>GET /api/timeline</code> reads it; the SSE tick records + prunes; startup seeds.
+        Nullable <code>work_thread_id</code> is already in the schema for v3.</li>
+      <li><strong>Localhost hardening (#13).</strong> <code>security.py</code>: Origin allowlist +
+        Host check (DNS-rebinding defense) enforced by middleware; a per-session token
+        (<code>secrets</code>, constant-time compare) exposed at <code>/api/session</code>. A missing
+        Origin/Host (curl, SSE) is allowed — not the threat.</li>
+      <li><strong>OS notifications (#11).</strong> <code>notify.py</code> (pure): edge-triggered
+        dedup so a desktop alert fires on the <em>transition</em> into throttle/headroom, not every
+        poll; thresholds mirror the dashboard. <code>osnotify.py</code> seam: macOS osascript /
+        Linux notify-send, absolute path, fixed argv, no shell, degrades to a quiet no-op.</li>
+      <li><strong>Watch-feed (#15).</strong> <code>transcript.py</code> (pure): tolerant Claude +
+        Codex JSONL → normalized turns {role, text, tools, ts}; thinking excluded; every text run
+        through <code>redact_text</code>. <code>GET /api/transcript</code>; a roomy reading view at
+        <code>/watch</code> with an agent toggle.</li>
+      <li><strong>Consumed-cost metering (#15).</strong> <code>pricing.py</code> (pure): a
+        <strong>dated, updatable</strong> rate card (per-1M-token rates captured 2026-06-23 from
+        Anthropic public pricing; cache read 0.1×, cache write 1.25× input). The Claude collector
+        sums tokens <em>per model</em> and reports <code>estimated_cost_usd</code> — surfaced as an
+        <em>estimate</em>, never a billed figure. Unpriced model ⇒ None (vendor-neutral).</li>
+      <li><strong>Jump-to-agent (#15) — first command-exec surface.</strong> <code>POST /api/jump</code>
+        builds a <code>claude --resume</code> / <code>codex resume</code> command. Hardened: requires
+        the per-session token (X-MC-Session) on top of the Origin/Host guard; <code>agentcmd.py</code>
+        (pure) uses fixed argv and validates the session id against flag-injection (no leading
+        <code>-</code>) and shell metachars. Local launch is <strong>opt-in</strong>
+        (<code>MC_ENABLE_JUMP=1</code>) so non-invasive stays the default; the command is always
+        returned so the UI can show/copy it.</li>
+    </ul>
+    <div class="callout">Verified live in this container against its own <code>~/.claude</code>
+      transcript: <code>/api/quota</code> ~51.9M tokens / ~$45.94 est.; <code>/api/transcript</code>
+      renders turns with tool chips + redaction; <code>/api/timeline</code> seeded; DB file 0600;
+      <code>/api/jump</code> 403 without token / bad Origin, 200 + command with a valid token.</div>
+
+    <h2>Context</h2>
+    <p><strong>Run it (unchanged):</strong> <code>uv --directory api run uvicorn
+      missioncontrol.main:app --host 127.0.0.1 --port 8787</code> + <code>pnpm -C web dev</code>.
+      New env: <code>MC_DB_PATH</code> (event-store path), <code>MC_ENABLE_JUMP=1</code> (enable the
+      local agent launch). New seams in the coverage-omit list: <code>store.py</code>,
+      <code>osnotify.py</code>, <code>launch.py</code> (each integration-tested anyway).</p>
+    <p><strong>Watch out:</strong> the PostToolUse format hook runs <code>ruff check --fix</code>,
+      which strips an import the moment it is momentarily unused — add an import <em>and its
+      usage</em> together (or write the whole file), or it vanishes between edits.</p>
+    <p><strong>Next (handed off — needs the owner's live env):</strong> v2 (#16) collaboration
+      surfaces (Slack first) + the unified Timeline (the Timeline UI is pure-local on the event
+      store and buildable now; Slack needs a workspace token in the app's runtime) + a generalized
+      guarded action endpoint (the <code>/api/jump</code> token+Origin pattern is the template);
+      v3 (#17) work-threads (schema already carries <code>work_thread_id</code>); later AWS (#18).
+      These were not built here because the ephemeral cloud container has no SaaS/AWS credentials,
+      so they cannot be verified with evidence — the right boundary for a fresh agent.</p>
+
+    <footer>Entry 0003 &middot; Mission Control Knowledge Base</footer>
+  </main>
+</body>
+</html>
