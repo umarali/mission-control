@@ -1,0 +1,87 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>0005 — v2 Slack collector — Mission Control KB</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <main class="wrap">
+    <header class="brand">
+      <img class="brandmark" src="logo.svg" width="26" height="26" alt="" />
+      <span class="wordmark">Mission Control</span>
+      <span class="brand-tag">radar</span>
+      <span class="spacer"></span>
+      <a href="index.html">Knowledge Base</a>
+    </header>
+    <h1>0005 &mdash; v2 Slack collector (buried items)</h1>
+    <p class="meta">2026-06-23 &middot; Pure core shipped; live wiring handed off &middot; Umar + Claude</p>
+    <p>
+      <span class="chip">area: api + web</span>
+      <span class="chip">PLAN.md §8, pain #3</span>
+      <span class="chip">issues: #16 (slice b)</span>
+    </p>
+
+    <h2>Problem</h2>
+    <p>v2's second slice (#16): the first <em>collaboration</em> surface. PLAN.md's pain #3 is
+      "important Slack / Asana / GitHub items get buried." Slack is first. The catch (flagged in the
+      0003 handoff): the app can only <em>read</em> Slack with the owner's runtime token, which the
+      ephemeral cloud container doesn't have — so the live fetch can't be verified here. The owner
+      chose to build the part that <strong>is</strong> verifiable now: the pure parser + event
+      derivation + the Timeline rendering, grounded in real-shaped fixtures.</p>
+
+    <h2>Solution</h2>
+    <p><code>api/missioncontrol/slack.py</code> — pure, credential-free, same shape as
+      <code>transcript.py</code>/<code>codex.py</code>. Input is an <em>already-parsed</em> read-only
+      Slack Web API response; the module never calls Slack and never touches a token.</p>
+    <ul>
+      <li><strong>What's a "buried item".</strong> A DM, or a message that @-mentions you. Your own
+        messages, system/join notices, and bot posts are explicitly <em>not</em> buried items and are
+        skipped. <code>parse_history</code> handles <code>conversations.history</code> (DM channel
+        &rarr; every message from someone else is a DM; regular channel &rarr; only
+        <code>&lt;@self&gt;</code> mentions). <code>parse_search</code> handles
+        <code>search.messages</code> (mentions, with channel + permalink).</li>
+      <li><strong>Readable, safe text.</strong> Each message is demangled from Slack mrkdwn
+        (<code>&lt;@U123|al&gt;</code>&rarr;<code>@al</code>, <code>&lt;#C1|eng&gt;</code>&rarr;
+        <code>#eng</code>, <code>&lt;url|label&gt;</code>&rarr;<code>label</code>) and then run through
+        <code>redact_text</code> — a pasted token can never reach the store or the browser.</li>
+      <li><strong>Tolerant (C5).</strong> Non-dict/auth-failed/partial responses return a
+        <code>degraded</code> feed (with the redacted Slack <code>error</code>), never a crash. An
+        <em>available but empty</em> feed ("Slack reachable, nothing buried") is distinct from a
+        degraded one.</li>
+      <li><strong>Into the Timeline.</strong> <code>slack_events</code> derives scrubbed
+        <code>Event</code> rows (surface <code>slack</code>, type <code>slack.dm</code>/
+        <code>slack.mention</code>) that entry 0004's Timeline already renders generically; a
+        <code>slack</code> filter pill appears automatically (vendor-neutral). The web summary added
+        a <code>slack.*</code> branch &rarr; "DM from Alice: …" / "bob in #eng: …".
+        <code>slack_ts</code> (the original message ts) is carried as the per-message idempotency key
+        so the eventual live loop can dedupe across ticks.</li>
+    </ul>
+    <div class="callout">Verified now: real-shaped, sanitized fixtures (DM, channel mention, search
+      match) incl. degraded/auth/redaction/demangle cases &mdash; <strong>+8 tests (103 total),
+      <code>slack.py</code> 100% line+branch</strong>; ruff + mypy + web lint/typecheck clean. Live
+      via Playwright: a DM and a mention render correctly in the Timeline with demangled, redacted
+      text.</div>
+
+    <h2>Context</h2>
+    <p><strong>What's left (handed to the owner, needs the runtime token):</strong> a thin
+      token-gated reader seam — read <code>SLACK_TOKEN</code> at call time (in memory only, redacted
+      from logs), <code>httpx</code> read-only GETs to <code>conversations.list</code>(types=im) +
+      <code>conversations.history</code> and/or <code>search.messages</code> (search needs a user
+      token), a short timeout + backoff — then feed the raw JSON to
+      <code>parse_history</code>/<code>parse_search</code> and append <code>slack_events(feed)</code>
+      to the store in <code>record_snapshot</code>, deduping on <code>slack_ts</code>. It belongs in
+      the coverage-omit seam list (like <code>paths.py</code>/<code>osnotify.py</code>) and should be
+      opt-in (e.g. only attempt when <code>SLACK_TOKEN</code> is set) so the non-invasive default
+      holds. The fixtures in <code>test_slack.py</code> are exactly the shapes that reader must
+      produce, so wiring is mechanical + verifiable once a token exists.</p>
+    <p><strong>Then (still v2/v3):</strong> the generalized guarded action endpoint — best built
+      <em>with</em> Slack's first "act" action (reply / mark-read) so the abstraction has &gt;1 user
+      (the <code>/api/jump</code> token+Origin pattern is the template). Then v3 (#17) work-threads
+      and AWS (#18).</p>
+
+    <footer>Entry 0005 &middot; Mission Control Knowledge Base</footer>
+  </main>
+</body>
+</html>
