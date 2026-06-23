@@ -146,6 +146,7 @@ export default function Watch() {
           <Link href="/watch" className="active">
             Watch
           </Link>
+          <Link href="/timeline">Timeline</Link>
         </nav>
       </header>
 

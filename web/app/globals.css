@@ -441,3 +441,101 @@ body {
   border-radius: 6px;
   padding: 4px 8px;
 }
+
+/* Timeline: a chronological, collapsed feed of normalized events across surfaces. */
+.inline-link {
+  color: var(--brand);
+  text-decoration: none;
+}
+.inline-link:hover {
+  text-decoration: underline;
+}
+.timeline {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.timeline::before {
+  content: "";
+  position: absolute;
+  left: 8px;
+  top: 10px;
+  bottom: 10px;
+  width: 1px;
+  background: var(--line);
+}
+.evt {
+  display: grid;
+  grid-template-columns: 18px 1fr;
+  gap: 10px;
+  align-items: start;
+  padding: 9px 4px;
+}
+.sev {
+  width: 9px;
+  height: 9px;
+  border-radius: 999px;
+  margin: 5px 0 0 4px;
+  box-shadow: 0 0 0 3px var(--bg);
+}
+.sev.info {
+  background: var(--brand);
+}
+.sev.warn {
+  background: var(--warn);
+}
+.sev.crit {
+  background: var(--crit);
+}
+.evt-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.evt-head .spacer {
+  margin-left: auto;
+}
+.evt .surface {
+  font:
+    600 0.68rem/1 ui-monospace,
+    SFMono-Regular,
+    Menlo,
+    monospace;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--brand);
+  background: var(--brand-soft);
+  border-radius: 6px;
+  padding: 3px 7px;
+}
+.evt .kind {
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--muted);
+}
+.evt .count {
+  font:
+    600 0.68rem/1 ui-monospace,
+    SFMono-Regular,
+    Menlo,
+    monospace;
+  color: var(--muted);
+  background: var(--code-bg);
+  border-radius: 999px;
+  padding: 2px 7px;
+  font-variant-numeric: tabular-nums;
+}
+.evt-ts {
+  color: var(--muted);
+  font-size: 0.76rem;
+  font-variant-numeric: tabular-nums;
+}
+.evt-summary {
+  margin-top: 3px;
+  font-size: 0.9rem;
+  line-height: 1.5;
+  color: var(--fg);
+  word-break: break-word;
+}

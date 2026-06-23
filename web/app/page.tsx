@@ -264,6 +264,7 @@ export default function Home() {
             Dashboard
           </Link>
           <Link href="/watch">Watch</Link>
+          <Link href="/timeline">Timeline</Link>
         </nav>
         <span className="updated" style={{ marginLeft: 14 }}>
           updated {updated}
