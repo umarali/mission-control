@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useEffect, useState } from "react";
 
 const API = process.env.NEXT_PUBLIC_API_BASE ?? "http://127.0.0.1:8787";
@@ -13,7 +14,11 @@ type QWindow = {
   blocked: boolean;
   stale: boolean;
 };
-type CodexQuota = { available: boolean; windows: QWindow[]; degraded: string | null };
+type CodexQuota = {
+  available: boolean;
+  windows: QWindow[];
+  degraded: string | null;
+};
 type ClaudeConsumed = {
   available: boolean;
   input_tokens: number;
@@ -24,7 +29,11 @@ type ClaudeConsumed = {
   events: number;
   degraded: string | null;
 };
-type Snapshot = { generated_at: number; codex: CodexQuota; claude: ClaudeConsumed };
+type Snapshot = {
+  generated_at: number;
+  codex: CodexQuota;
+  claude: ClaudeConsumed;
+};
 
 type Status = "ok" | "warn" | "crit" | "muted";
 
@@ -43,7 +52,9 @@ function fmtCountdown(resetsAt: number | null, now: number): string {
   const h = Math.floor(d / 3600);
   const m = Math.floor((d % 3600) / 60);
   const s = d % 60;
-  return h > 0 ? `${h}h ${String(m).padStart(2, "0")}m` : `${m}m ${String(s).padStart(2, "0")}s`;
+  return h > 0
+    ? `${h}h ${String(m).padStart(2, "0")}m`
+    : `${m}m ${String(s).padStart(2, "0")}s`;
 }
 
 const fmtNum = (n: number): string => n.toLocaleString("en-US");
@@ -62,8 +73,15 @@ function GaugeCard({ w, now }: { w: QWindow; now: number }) {
   const width = remaining === null ? 0 : Math.max(0, Math.min(100, remaining));
   const badge = badgeFor(st, w.blocked);
   const soonFrac =
-    w.window_minutes && w.resets_at ? (w.resets_at - now) / (w.window_minutes * 60) : 1;
-  const headroom = st === "ok" && remaining !== null && remaining > 40 && soonFrac > 0 && soonFrac < 0.2;
+    w.window_minutes && w.resets_at
+      ? (w.resets_at - now) / (w.window_minutes * 60)
+      : 1;
+  const headroom =
+    st === "ok" &&
+    remaining !== null &&
+    remaining > 40 &&
+    soonFrac > 0 &&
+    soonFrac < 0.2;
 
   return (
     <div className="card">
@@ -81,7 +99,8 @@ function GaugeCard({ w, now }: { w: QWindow; now: number }) {
       <div className="reset">
         <span className={`badge ${badge.cls}`}>{badge.text}</span>
         <span>
-          resets in <span className="mono">{fmtCountdown(w.resets_at, now)}</span>
+          resets in{" "}
+          <span className="mono">{fmtCountdown(w.resets_at, now)}</span>
         </span>
       </div>
       {headroom && (
@@ -90,7 +109,9 @@ function GaugeCard({ w, now }: { w: QWindow; now: number }) {
         </div>
       )}
       {st === "crit" && (
-        <div className="nudge crit">Throttle risk — almost out for this window.</div>
+        <div className="nudge crit">
+          Throttle risk — almost out for this window.
+        </div>
       )}
     </div>
   );
@@ -115,7 +136,9 @@ function MeterCard({ c }: { c: ClaudeConsumed }) {
   return (
     <div className="card meter">
       <div className="big">{fmtNum(c.total_tokens)}</div>
-      <div className="sub">tokens consumed · {fmtNum(c.events)} events · current session</div>
+      <div className="sub">
+        tokens consumed · {fmtNum(c.events)} events · current session
+      </div>
       <div className="breakdown">
         {rows.map(([k, v]) => (
           <div key={k} style={{ display: "contents" }}>
@@ -172,7 +195,9 @@ export default function Home() {
     };
   }, []);
 
-  const updated = snap ? new Date(snap.generated_at * 1000).toLocaleTimeString() : "—";
+  const updated = snap
+    ? new Date(snap.generated_at * 1000).toLocaleTimeString()
+    : "—";
 
   return (
     <main className="app">
@@ -185,22 +210,55 @@ export default function Home() {
           style={{ color: "var(--brand)" }}
           aria-hidden="true"
         >
-          <circle cx="12" cy="12" r="10.5" stroke="currentColor" strokeWidth="1.4" />
-          <circle cx="12" cy="12" r="6.2" stroke="currentColor" strokeWidth="1.1" opacity="0.5" />
-          <line x1="12" y1="12" x2="19.8" y2="5.6" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+          <circle
+            cx="12"
+            cy="12"
+            r="10.5"
+            stroke="currentColor"
+            strokeWidth="1.4"
+          />
+          <circle
+            cx="12"
+            cy="12"
+            r="6.2"
+            stroke="currentColor"
+            strokeWidth="1.1"
+            opacity="0.5"
+          />
+          <line
+            x1="12"
+            y1="12"
+            x2="19.8"
+            y2="5.6"
+            stroke="currentColor"
+            strokeWidth="1.5"
+            strokeLinecap="round"
+          />
           <circle cx="17" cy="8.4" r="1.7" fill="currentColor" />
           <circle cx="12" cy="12" r="1.05" fill="currentColor" />
         </svg>
         <span className="wordmark">Mission Control</span>
         <span className="tag">radar</span>
         <span className="spacer" />
-        <span className="updated">updated {updated}</span>
+        <nav className="nav">
+          <Link href="/" className="active">
+            Dashboard
+          </Link>
+          <Link href="/watch">Watch</Link>
+        </nav>
+        <span className="updated" style={{ marginLeft: 14 }}>
+          updated {updated}
+        </span>
       </header>
 
       {down && !snap && (
         <div className="notice">
           Cannot reach the API at <code>{API}</code>. Start it with{" "}
-          <code>uv --directory api run uvicorn missioncontrol.main:app --host 127.0.0.1 --port 8787</code>.
+          <code>
+            uv --directory api run uvicorn missioncontrol.main:app --host
+            127.0.0.1 --port 8787
+          </code>
+          .
         </div>
       )}
 
