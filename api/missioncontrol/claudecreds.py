@@ -19,6 +19,7 @@ import os
 import subprocess
 import sys
 import time
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
@@ -28,10 +29,18 @@ _USAGE_URL = "https://api.anthropic.com/api/oauth/usage"
 _BETA = "oauth-2025-04-20"
 _TIMEOUT = 5.0
 _SECURITY = "/usr/bin/security"  # absolute path, never the bare name
-_KEYCHAIN_SERVICE = "Claude Code-credentials"
+_KEYCHAIN_SERVICE = "Claude Code-credentials"  # confirmed Claude Code Keychain item
 _CACHE_TTL = 60.0  # be polite to the endpoint: at most one fetch per minute
 
 _cache: dict[str, Any] = {}
+
+
+@dataclass
+class UsageResult:
+    """A usage fetch outcome: the JSON, or a human reason it isn't available — never a token."""
+
+    usage: dict[str, Any] | None = None
+    error: str | None = None
 
 
 def claude_quota_enabled() -> bool:
@@ -40,14 +49,19 @@ def claude_quota_enabled() -> bool:
 
 
 def _extract_access_token(raw: str) -> str | None:
-    """Pull the access token from the credential blob: JSON {"claudeAiOauth":{"accessToken":…}}."""
+    """Pull the access token from the credential blob.
+
+    Handles both shapes seen in the wild: the macOS Keychain payload is flat
+    ``{"accessToken": "sk-ant-oat…", …}``; the Linux ``~/.claude/.credentials.json`` nests it under
+    ``{"claudeAiOauth": {"accessToken": …}}``. Falls back to a bare token line.
+    """
     raw = raw.strip()
     if not raw:
         return None
     try:
         data = json.loads(raw)
     except ValueError:
-        return raw if raw.startswith("sk-ant-") else None  # a bare token line
+        return raw if raw.startswith("sk-ant-") else None
     if isinstance(data, dict):
         oauth = data.get("claudeAiOauth")
         if isinstance(oauth, dict) and isinstance(oauth.get("accessToken"), str):
@@ -81,6 +95,7 @@ def _token_from_file() -> str | None:
 
 
 def _read_token() -> str | None:
+    # macOS keeps it in the Keychain; if that's locked/ACL-denied, the file may still exist.
     if sys.platform == "darwin":
         tok = _token_from_keychain()
         if tok:
@@ -88,20 +103,21 @@ def _read_token() -> str | None:
     return _token_from_file()
 
 
-def fetch_claude_usage() -> dict[str, Any] | None:
-    """Read-only fetch of Claude's usage windows. Opt-in; returns the raw usage JSON, or None.
+def fetch_claude_usage() -> UsageResult:
+    """Read-only fetch of Claude's usage windows. Opt-in; returns the usage JSON or a reason.
 
-    The token never leaves this function; only the numeric usage JSON is returned. Any failure
-    (disabled, no token, endpoint/parse error) yields None so the caller degrades cleanly.
+    The token never leaves this function; only numbers (or a redacted reason) are returned.
     """
     if not claude_quota_enabled():
-        return None
+        return UsageResult()  # disabled: the caller phrases the "set the flag" message
     cached = _cache.get("usage")
-    if cached is not None and (time.monotonic() - _cache.get("at", 0.0)) < _CACHE_TTL:
-        return cached if isinstance(cached, dict) else None
+    if isinstance(cached, dict) and (time.monotonic() - _cache.get("at", 0.0)) < _CACHE_TTL:
+        return UsageResult(usage=cached)
     token = _read_token()
     if not token:
-        return None
+        return UsageResult(
+            error="no Claude OAuth token found (Keychain locked/denied, or no credentials file)"
+        )
     try:
         with httpx.Client(timeout=_TIMEOUT) as client:
             resp = client.get(
@@ -111,8 +127,9 @@ def fetch_claude_usage() -> dict[str, Any] | None:
             resp.raise_for_status()
             body = resp.json()
     except Exception:  # noqa: BLE001  # reason: degrade-never-lie; an error must never surface the token
-        return None
-    usage: dict[str, Any] | None = body if isinstance(body, dict) else None
-    _cache["usage"] = usage
+        return UsageResult(error="Claude usage endpoint request failed")
+    if not isinstance(body, dict):
+        return UsageResult(error="Claude usage response not understood")
+    _cache["usage"] = body
     _cache["at"] = time.monotonic()
-    return usage
+    return UsageResult(usage=body)

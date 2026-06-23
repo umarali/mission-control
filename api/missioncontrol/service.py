@@ -39,14 +39,14 @@ def get_store() -> EventStore:
 
 def _claude_quota(now: int) -> ClaudeQuota:
     """Claude remaining windows from the OAuth usage endpoint (credentialed, opt-in)."""
-    usage = fetch_claude_usage()
-    if usage is not None:
-        return parse_claude_quota(usage, now=now)
-    if claude_quota_enabled():
-        return ClaudeQuota(available=False, degraded="Claude usage unavailable (token or endpoint)")
-    return ClaudeQuota(
-        available=False, degraded="set MC_ENABLE_CLAUDE_QUOTA=1 to show remaining quota"
-    )
+    res = fetch_claude_usage()
+    if res.usage is not None:
+        return parse_claude_quota(res.usage, now=now)
+    if not claude_quota_enabled():
+        return ClaudeQuota(
+            available=False, degraded="set MC_ENABLE_CLAUDE_QUOTA=1 to show remaining quota"
+        )
+    return ClaudeQuota(available=False, degraded=res.error or "Claude usage unavailable")
 
 
 def snapshot() -> dict[str, Any]:
