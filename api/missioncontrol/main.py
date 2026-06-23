@@ -10,7 +10,9 @@ import json
 from collections.abc import AsyncIterator, Awaitable, Callable
 from contextlib import asynccontextmanager
 from dataclasses import asdict
+from pathlib import Path
 
+from dotenv import load_dotenv
 from fastapi import FastAPI, Header, HTTPException, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, StreamingResponse
@@ -21,6 +23,12 @@ from .launch import launch_resume
 from .redact import redact_text
 from .security import host_allowed, new_session_token, origin_allowed, token_ok
 from .service import get_store, record_snapshot, snapshot, transcript
+
+# Load api/.env (config flags + tokens like MC_ENABLE_CLAUDE_QUOTA / SLACK_TOKEN) so they take
+# effect with the documented run command, whatever the cwd. Real env vars still win (no override);
+# nothing here is a secret, and the .env itself is git-ignored.
+load_dotenv(Path(__file__).resolve().parent.parent / ".env")
+load_dotenv()  # also honor a .env in the current working directory
 
 POLL_SECONDS = 30
 

@@ -9,6 +9,8 @@ dependencies = [
   # Read-only vendor GETs (Slack collector; the Claude OAuth path in PLAN.md §5). Mainstream,
   # maintained, pinned via uv.lock. Also what Starlette's TestClient uses.
   "httpx>=0.27",
+  # Load api/.env so config flags + tokens take effect with the plain uvicorn run command.
+  "python-dotenv>=1.0",
 ]
 
 [dependency-groups]
