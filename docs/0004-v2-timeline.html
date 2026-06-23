@@ -1,0 +1,92 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>0004 — v2 unified Timeline — Mission Control KB</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <main class="wrap">
+    <header class="brand">
+      <img class="brandmark" src="logo.svg" width="26" height="26" alt="" />
+      <span class="wordmark">Mission Control</span>
+      <span class="brand-tag">radar</span>
+      <span class="spacer"></span>
+      <a href="index.html">Knowledge Base</a>
+    </header>
+    <h1>0004 &mdash; v2 unified Timeline</h1>
+    <p class="meta">2026-06-23 &middot; Shipped (web view) &middot; Umar + Claude</p>
+    <p>
+      <span class="chip">area: web</span>
+      <span class="chip">PLAN.md §1, §8</span>
+      <span class="chip">issues: #16 (slice a)</span>
+    </p>
+
+    <h2>Problem</h2>
+    <p>v1.5 (entry 0003) built the event-store spine and <code>GET /api/timeline</code>, but the
+      "what just happened across everything, chronologically" <em>view</em> (PLAN.md §1) had no UI.
+      v2 (#16) has three parts — (a) the Timeline, (b) a Slack collector, (c) a generalized action
+      endpoint. Only (a) is buildable <em>and</em> verifiable with evidence inside the ephemeral
+      cloud container: it is pure-local on the event store and needs no SaaS credentials. (b)/(c)
+      need the owner's live Slack token, so they stay handed off. So this session built (a).</p>
+
+    <h2>Solution</h2>
+    <p>A read-only reading view at <code>/timeline</code> (<code>web/app/timeline/page.tsx</code>),
+      plus a <strong>Dashboard / Watch / Timeline</strong> nav across all three pages. It polls
+      <code>/api/timeline?limit=500</code> every 15&nbsp;s and renders the normalized rows
+      newest-first. Same design tokens as the dashboard/watch (one product).</p>
+    <ul>
+      <li><strong>Vendor-neutral rows.</strong> A left severity rail (info/warn/crit dot), a surface
+        chip + a kind chip (snapshot/status/throttle/headroom), a human summary, and relative time
+        (absolute on hover). No surface is first-classed; pills are derived from the data present.</li>
+      <li><strong>Tolerant summaries at the store boundary.</strong> <code>payload</code> is
+        <code>Record&lt;string, unknown&gt;</code>, never trusted: small <code>asNum</code>/
+        <code>asStr</code> readers narrow each field. Codex snapshot &rarr; "5h 62% · weekly 81%
+        left" (from <code>remaining_pct</code>); Claude &rarr; "N messages · ~$X est."; collector
+        status &rarr; its degraded reason; alerts &rarr; their <code>message</code>. Unknown shapes
+        fall back to the type label — degrade, never crash.</li>
+      <li><strong>Gotcha baked into the summary: token counts are <code>&lt;redacted&gt;</code> in
+        the store.</strong> <code>scrub_payload</code>'s key matcher includes "token", so every
+        <code>*_tokens</code> count is masked on persistence (safe over-redaction). The live
+        dashboard (<code>/api/quota</code>, unscrubbed) still shows real totals; the Timeline can't,
+        so the Claude summary leans on <code>estimated_cost_usd</code> + <code>events</code>, which
+        survive. This is the honest signal, not a bug to "fix" by weakening redaction.</li>
+      <li><strong>Key-collapse, not adjacency.</strong> The 30s heartbeats (claude snapshot + codex
+        status) interleave by surface, so adjacent-identical collapse never fires. Instead, identical
+        events (surface|type|severity|summary) fold into one row with a ×N count and a first-seen
+        tooltip, ordered by newest occurrence (input is newest-first, so a key's first sighting is
+        its newest). Any <em>genuine</em> change (e.g. rising cost) is a new key &rarr; its own row.
+        The collapse key is also the React key — guaranteed unique, no dup-key warnings.</li>
+      <li><strong>Degrade-never-lie states.</strong> API-down notice (copied from the shipped
+        pattern), a degraded banner when the store read fails, and an empty-state card ("Open the
+        Dashboard to start the live feed — events accrue while it is open") since rows only accrue
+        while an SSE client (the dashboard) is connected.</li>
+    </ul>
+    <div class="callout">Verified live with Playwright (light + dark) against this container's real
+      Claude usage plus synthetic Codex windows/alerts: rows render with the right severity/chips/
+      summaries; the surface filter narrows correctly; ×N collapse compresses heartbeats (6 rows
+      from ~14 raw); the empty state renders; <strong>zero console warnings</strong>. web
+      lint + typecheck clean; api untouched (95 tests, 100%).</div>
+
+    <h2>Context</h2>
+    <p><strong>Run it (unchanged):</strong> <code>uv --directory api run uvicorn
+      missioncontrol.main:app --host 127.0.0.1 --port 8787</code> + <code>pnpm -C web dev</code>,
+      then open <code>/timeline</code>. No new env, no new deps.</p>
+    <p><strong>Known gap:</strong> <code>web/</code> still has no test harness (vitest/coverage not
+      scaffolded — issues #3/#4/#14), so the Timeline's pure helpers (<code>summarize</code>,
+      <code>collapse</code>) are typecheck-verified and evidence-verified but not unit-tested. The
+      api side keeps its 100% gate. Standing up vitest is its own small PR.</p>
+    <p><strong>Next (v2, still handed off):</strong> (b) the <strong>Slack collector</strong> — same
+      pure-parser + fixtures pattern as <code>transcript.py</code>/<code>codex.py</code>, emitting
+      <code>slack.*</code> event rows that this Timeline already renders generically. Needs the
+      owner's Slack token for live wiring <em>and</em> a scope decision (mentions/DMs vs. channels —
+      the "buried items" pain #3). (c) the <strong>generalized action endpoint</strong> — best done
+      <em>with</em> Slack's first "act" action so the abstraction has &gt;1 user (the
+      <code>/api/jump</code> token+Origin pattern is the template). Then v3 (#17) work-threads
+      (schema already carries <code>work_thread_id</code>) and AWS (#18).</p>
+
+    <footer>Entry 0004 &middot; Mission Control Knowledge Base</footer>
+  </main>
+</body>
+</html>
