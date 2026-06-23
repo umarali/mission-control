@@ -13,15 +13,18 @@ from typing import Any
 from .alerts import alerts_from_snapshot
 from .claude import parse_claude_consumed
 from .codex import parse_codex_quota
-from .events import events_from_snapshot
+from .events import events_from_snapshot, make_event
 from .models import ClaudeConsumed, CodexQuota, Transcript
 from .notify import Notifier
 from .osnotify import os_send
 from .paths import newest_claude_transcript, newest_codex_rollout, read_jsonl
+from .slack import slack_events
+from .slacksource import fetch_slack_feed, slack_enabled
 from .store import EventStore
 from .transcript import DEFAULT_LIMIT, render_transcript
 
 MAX_EVENTS = 5000  # retention cap: keep the store bounded for a local-first tool
+SLACK_DEDUP_WINDOW = 1000  # recent slack rows scanned to avoid re-storing the same message
 
 _store = EventStore()
 _notifier = Notifier(os_send)
@@ -62,17 +65,61 @@ def snapshot() -> dict[str, Any]:
     }
 
 
-def record_snapshot() -> dict[str, Any]:
-    """Compute a snapshot, persist its derived events, prune, and return it.
+def _record_slack() -> None:
+    """Fetch Slack buried items and append the new ones (dedup on slack_ts).
 
-    Degrade, never lie: a store failure must not break the live read, so it is swallowed here
-    (the history/timeline feature degrades, the gauges do not).
+    Opt-in: only called when SLACK_TOKEN is set. Degrade-never-lie: an unavailable feed records a
+    single ``collector.status`` row, but only when the reason changes (so a bad token does not spam
+    the timeline). Read-only throughout; the token never reaches the store.
+    """
+    feed = fetch_slack_feed()
+    if not feed.available:
+        recent = _store.recent(limit=50, surface="slack")
+        last_status = next((e for e in recent if e.type == "collector.status"), None)
+        if last_status is None or last_status.payload.get("degraded") != feed.degraded:
+            _store.append(
+                [
+                    make_event(
+                        "slack",
+                        "slack.collector",
+                        "collector.status",
+                        ts=int(time.time()),
+                        severity="warn",
+                        payload={"degraded": feed.degraded},
+                    )
+                ]
+            )
+        return
+    events = slack_events(feed)
+    if not events:
+        return
+    seen = {
+        e.payload.get("slack_ts") for e in _store.recent(limit=SLACK_DEDUP_WINDOW, surface="slack")
+    }
+    fresh = [e for e in events if e.payload.get("slack_ts") not in seen]
+    if fresh:
+        _store.append(fresh)
+
+
+def record_snapshot() -> dict[str, Any]:
+    """Compute a snapshot, persist its derived events (+ Slack, if enabled), prune, and return it.
+
+    Degrade, never lie: a store/collector failure must not break the live read, so each side
+    effect is swallowed independently (the history/timeline degrades, the gauges do not).
     """
     snap = snapshot()
     try:
         _store.append(events_from_snapshot(snap))
-        _store.prune(MAX_EVENTS)
     except Exception:  # noqa: BLE001  # reason: store hiccup must never break the live snapshot
+        pass
+    try:
+        if slack_enabled():
+            _record_slack()
+    except Exception:  # noqa: BLE001  # reason: a Slack hiccup must never break the read path
+        pass
+    try:
+        _store.prune(MAX_EVENTS)
+    except Exception:  # noqa: BLE001  # reason: prune is best-effort retention, not correctness
         pass
     try:
         _notifier.process(alerts_from_snapshot(snap))

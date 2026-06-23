@@ -151,6 +151,12 @@ def test_search_matches() -> None:
     assert b.ts == 42.0 and b.slack_ts is None and b.permalink is None
 
 
+def test_search_self_id_keeps_only_real_mentions() -> None:
+    # The broad search returns 2 usable matches, but only the "deploy" one mentions <@U_SELF>.
+    feed = parse_search(SEARCH, users=USERS, self_id="U_SELF")
+    assert [i.text for i in feed.items] == ["@Me deploy please"]
+
+
 def test_search_degraded_states() -> None:
     assert parse_search(None).degraded == "slack search was not an object"
     bad = parse_search({"ok": False, "error": "not_authed"})

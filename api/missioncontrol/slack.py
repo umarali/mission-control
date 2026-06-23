@@ -137,8 +137,15 @@ def parse_history(
     return SlackFeed(available=True, items=items)
 
 
-def parse_search(search: Any, *, users: dict[str, str] | None = None) -> SlackFeed:
-    """Normalize a ``search.messages`` response (mentions of you) into buried items."""
+def parse_search(
+    search: Any, *, users: dict[str, str] | None = None, self_id: str | None = None
+) -> SlackFeed:
+    """Normalize a ``search.messages`` response (mentions of you) into buried items.
+
+    Slack search has no exact "mentions of me" modifier, so the reader queries broadly (your
+    handle) and passes ``self_id`` here: a match is kept only if its raw text actually contains
+    ``<@self_id>``. That keeps mentions precise no matter how fuzzy the query was.
+    """
     if not isinstance(search, dict):
         return SlackFeed(available=False, degraded="slack search was not an object")
     if search.get("ok") is False:
@@ -152,7 +159,10 @@ def parse_search(search: Any, *, users: dict[str, str] | None = None) -> SlackFe
     for m in matches:
         if not isinstance(m, dict):
             continue
-        text = _clean(m.get("text"), users)
+        raw = m.get("text")
+        if self_id is not None and f"<@{self_id}" not in (raw if isinstance(raw, str) else ""):
+            continue
+        text = _clean(raw, users)
         if not text:
             continue
         chan = m.get("channel")
