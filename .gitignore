@@ -41,3 +41,4 @@ secrets/
 .idea/
 
 # NOTE: pnpm-lock.yaml / uv.lock / bun.lock ARE committed on purpose (audited, pinned deps).
+.gstack/
