@@ -54,6 +54,10 @@ export default function Watch() {
   const [agent, setAgent] = useState<Agent>("claude");
   const [data, setData] = useState<Transcript | null>(null);
   const [down, setDown] = useState(false);
+  const [jumpResult, setJumpResult] = useState<{
+    agent: Agent;
+    command: string;
+  } | null>(null);
 
   useEffect(() => {
     let alive = true;
@@ -75,6 +79,26 @@ export default function Watch() {
 
   // Derived (not stored) so we never setState directly inside the effect.
   const loading = !down && (data === null || data.agent !== agent);
+
+  // Jump-to-agent: fetch the per-session token, then POST it to the guarded action endpoint.
+  async function doJump() {
+    if (!data?.session_id) return;
+    try {
+      const { token } = await fetch(`${API}/api/session`).then((r) => r.json());
+      const res = await fetch(`${API}/api/jump`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "X-MC-Session": token },
+        body: JSON.stringify({ agent, session_id: data.session_id }),
+      }).then((r) => r.json());
+      if (typeof res.command === "string")
+        setJumpResult({ agent, command: res.command });
+    } catch {
+      /* leave any prior result; the API-down notice covers connectivity */
+    }
+  }
+
+  const jumpCmd =
+    jumpResult && jumpResult.agent === agent ? jumpResult.command : null;
 
   return (
     <main className="app">
@@ -145,7 +169,18 @@ export default function Watch() {
             session {data.session_id.slice(0, 12)}
           </span>
         )}
+        {!loading && data?.available && data?.session_id && (
+          <button className="jump" onClick={doJump} type="button">
+            Jump to agent
+          </button>
+        )}
       </div>
+
+      {jumpCmd && (
+        <div className="jumpcmd">
+          Resume this session: <code>{jumpCmd}</code>
+        </div>
+      )}
 
       {down && (
         <div className="notice">
