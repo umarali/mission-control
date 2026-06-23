@@ -43,5 +43,12 @@ testpaths = ["tests"]
 [tool.coverage.run]
 branch = true
 source = ["missioncontrol"]
-# I/O seams (filesystem + web framework wiring) are covered by manual run + e2e, not unit %.
-omit = ["missioncontrol/paths.py", "missioncontrol/service.py", "missioncontrol/main.py"]
+# I/O seams (filesystem + DB + web framework wiring) are covered by integration/manual run, not
+# unit %. store.py is exercised by tests/test_store.py against a temp DB; the pure logic it serves
+# (events.py, alerts.py) stays in the 100% gate.
+omit = [
+  "missioncontrol/paths.py",
+  "missioncontrol/service.py",
+  "missioncontrol/main.py",
+  "missioncontrol/store.py",
+]

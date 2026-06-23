@@ -11,8 +11,19 @@ from typing import Any
 
 from .claude import parse_claude_consumed
 from .codex import parse_codex_quota
+from .events import events_from_snapshot
 from .models import ClaudeConsumed, CodexQuota
 from .paths import newest_claude_transcript, newest_codex_rollout, read_jsonl
+from .store import EventStore
+
+MAX_EVENTS = 5000  # retention cap: keep the store bounded for a local-first tool
+
+_store = EventStore()
+
+
+def get_store() -> EventStore:
+    """The process-wide event store (lazily pathed; honors MC_DB_PATH)."""
+    return _store
 
 
 def snapshot() -> dict[str, Any]:
@@ -43,3 +54,18 @@ def snapshot() -> dict[str, Any]:
         "codex": asdict(codex),
         "claude": asdict(claude),
     }
+
+
+def record_snapshot() -> dict[str, Any]:
+    """Compute a snapshot, persist its derived events, prune, and return it.
+
+    Degrade, never lie: a store failure must not break the live read, so it is swallowed here
+    (the history/timeline feature degrades, the gauges do not).
+    """
+    snap = snapshot()
+    try:
+        _store.append(events_from_snapshot(snap))
+        _store.prune(MAX_EVENTS)
+    except Exception:  # noqa: BLE001  # reason: store hiccup must never break the live snapshot
+        pass
+    return snap

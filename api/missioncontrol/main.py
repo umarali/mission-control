@@ -8,16 +8,31 @@ from __future__ import annotations
 import asyncio
 import json
 from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
+from dataclasses import asdict
 
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 
-from .service import snapshot
+from .redact import redact_text
+from .service import get_store, record_snapshot, snapshot
 
 POLL_SECONDS = 30
 
-app = FastAPI(title="Mission Control API", version="0.1.0")
+
+@asynccontextmanager
+async def lifespan(app: FastAPI) -> AsyncIterator[None]:
+    # Init the event store and seed one snapshot so the timeline has data immediately.
+    try:
+        get_store().init()
+        record_snapshot()
+    except Exception:  # noqa: BLE001  # reason: store init must never block serving the gauges
+        pass
+    yield
+
+
+app = FastAPI(title="Mission Control API", version="0.2.0", lifespan=lifespan)
 
 # Read-only, local-first: only the local dev web origin may call us; GET only.
 app.add_middleware(
@@ -38,13 +53,27 @@ def quota() -> dict[str, object]:
     return snapshot()
 
 
+@app.get("/api/timeline")
+def timeline(limit: int = 100, surface: str | None = None) -> dict[str, object]:
+    """Recent normalized events from the local store (newest first). Degrades to empty."""
+    limit = max(1, min(limit, 500))
+    store = get_store()
+    if not store.path.exists():
+        return {"events": [], "degraded": "event store not initialized"}
+    try:
+        events = [asdict(e) for e in store.recent(limit=limit, surface=surface)]
+        return {"events": events}
+    except Exception as exc:  # noqa: BLE001  # reason: degrade-never-lie on any store read error
+        return {"events": [], "degraded": redact_text(str(exc))}
+
+
 @app.get("/api/events")
 async def events(request: Request) -> StreamingResponse:
     async def gen() -> AsyncIterator[str]:
         while True:
             if await request.is_disconnected():
                 break
-            yield f"data: {json.dumps(snapshot())}\n\n"
+            yield f"data: {json.dumps(record_snapshot())}\n\n"
             await asyncio.sleep(POLL_SECONDS)
 
     return StreamingResponse(
