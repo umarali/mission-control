@@ -9,16 +9,20 @@ import time
 from dataclasses import asdict
 from typing import Any
 
+from .alerts import alerts_from_snapshot
 from .claude import parse_claude_consumed
 from .codex import parse_codex_quota
 from .events import events_from_snapshot
 from .models import ClaudeConsumed, CodexQuota
+from .notify import Notifier
+from .osnotify import os_send
 from .paths import newest_claude_transcript, newest_codex_rollout, read_jsonl
 from .store import EventStore
 
 MAX_EVENTS = 5000  # retention cap: keep the store bounded for a local-first tool
 
 _store = EventStore()
+_notifier = Notifier(os_send)
 
 
 def get_store() -> EventStore:
@@ -67,5 +71,9 @@ def record_snapshot() -> dict[str, Any]:
         _store.append(events_from_snapshot(snap))
         _store.prune(MAX_EVENTS)
     except Exception:  # noqa: BLE001  # reason: store hiccup must never break the live snapshot
+        pass
+    try:
+        _notifier.process(alerts_from_snapshot(snap))
+    except Exception:  # noqa: BLE001  # reason: a notifier hiccup must never break the read path
         pass
     return snap
