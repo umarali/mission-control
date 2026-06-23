@@ -52,4 +52,5 @@ omit = [
   "missioncontrol/main.py",
   "missioncontrol/store.py",
   "missioncontrol/osnotify.py",
+  "missioncontrol/launch.py",
 ]

@@ -65,3 +65,31 @@ def test_timeline_degraded_when_uninitialized(
     body = client.get("/api/timeline").json()  # module-level client: no lifespan, no DB file
     assert body["events"] == []
     assert body["degraded"]
+
+
+def test_jump_requires_session_token() -> None:
+    r = client.post("/api/jump", json={"agent": "claude", "session_id": "abc123"})
+    assert r.status_code == 403
+
+
+def test_jump_returns_command_with_valid_token() -> None:
+    token = client.get("/api/session").json()["token"]
+    r = client.post(
+        "/api/jump",
+        json={"agent": "claude", "session_id": "abc123"},
+        headers={"X-MC-Session": token},
+    )
+    assert r.status_code == 200
+    body = r.json()
+    assert body["command"] == "claude --resume abc123"
+    assert body["launched"] is False  # launch is opt-in (MC_ENABLE_JUMP), off in tests
+
+
+def test_jump_rejects_invalid_agent_with_valid_token() -> None:
+    token = client.get("/api/session").json()["token"]
+    r = client.post(
+        "/api/jump",
+        json={"agent": "nope", "session_id": "abc123"},
+        headers={"X-MC-Session": token},
+    )
+    assert r.status_code == 400

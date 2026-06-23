@@ -11,12 +11,15 @@ from collections.abc import AsyncIterator, Awaitable, Callable
 from contextlib import asynccontextmanager
 from dataclasses import asdict
 
-from fastapi import FastAPI, Request, Response
+from fastapi import FastAPI, Header, HTTPException, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, StreamingResponse
+from pydantic import BaseModel
 
+from .agentcmd import resume_command
+from .launch import launch_resume
 from .redact import redact_text
-from .security import host_allowed, new_session_token, origin_allowed
+from .security import host_allowed, new_session_token, origin_allowed, token_ok
 from .service import get_store, record_snapshot, snapshot, transcript
 
 POLL_SECONDS = 30
@@ -39,11 +42,12 @@ app = FastAPI(title="Mission Control API", version="0.2.0", lifespan=lifespan)
 # the v1.5 action surface will require it. Set at import so it exists with or without lifespan.
 app.state.session_token = new_session_token()
 
-# Read-only, local-first: only the local dev web origin may call us; GET only.
+# Local-first: only the local dev web origin may call us. GET for reads; POST only for the
+# token-guarded jump-to-agent action (#15).
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["http://localhost:3000", "http://127.0.0.1:3000"],
-    allow_methods=["GET"],
+    allow_methods=["GET", "POST"],
     allow_headers=["*"],
 )
 
@@ -96,6 +100,31 @@ def timeline(limit: int = 100, surface: str | None = None) -> dict[str, object]:
         return {"events": events}
     except Exception as exc:  # noqa: BLE001  # reason: degrade-never-lie on any store read error
         return {"events": [], "degraded": redact_text(str(exc))}
+
+
+class JumpBody(BaseModel):
+    agent: str
+    session_id: str
+
+
+@app.post("/api/jump")
+def jump(
+    body: JumpBody,
+    request: Request,
+    x_mc_session: str | None = Header(default=None),
+) -> dict[str, object]:
+    """First command-exec surface (#15): build a resume command for an agent session.
+
+    Hardened: requires the per-session token (plus the Origin/Host guard middleware). The local
+    launch is opt-in (MC_ENABLE_JUMP=1) so the non-invasive default holds; the command is always
+    returned so the UI can show/copy it regardless.
+    """
+    if not token_ok(x_mc_session, request.app.state.session_token):
+        raise HTTPException(status_code=403, detail="invalid or missing session token")
+    cmd = resume_command(body.agent, body.session_id)
+    if cmd is None:
+        raise HTTPException(status_code=400, detail="unknown agent or invalid session id")
+    return {"command": " ".join(cmd), "launched": launch_resume(cmd)}
 
 
 @app.get("/api/events")
