@@ -79,6 +79,34 @@ class Alert:
 
 
 @dataclass
+class SlackItem:
+    """One normalized 'buried item' from Slack — a mention or a DM worth surfacing.
+
+    Vendor-neutral and credential-free: built from a read-only Slack Web API response, with text
+    already run through ``redact_text``. ``slack_ts`` is the original message ts (a stable
+    idempotency key so the same message is never stored twice).
+    """
+
+    kind: str  # "mention" | "dm"
+    channel: str  # channel name (e.g. "general") or "direct message"
+    channel_id: str | None
+    author: str  # display name if resolvable, else the Slack user id
+    text: str  # visible text (redacted)
+    ts: float | None  # epoch seconds parsed from the Slack ts string
+    slack_ts: str | None  # original Slack ts string ("1718…000200")
+    permalink: str | None
+
+
+@dataclass
+class SlackFeed:
+    """A read-only feed of Slack buried items (mentions + DMs)."""
+
+    available: bool
+    items: list[SlackItem] = field(default_factory=list)
+    degraded: str | None = None
+
+
+@dataclass
 class Event:
     """One append-only, normalized event row for the local store (PLAN.md §5).
 

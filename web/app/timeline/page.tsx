@@ -73,9 +73,22 @@ function summarizeClaude(p: Record<string, unknown>): string {
   return bits.length > 0 ? bits.join(" · ") : "usage snapshot";
 }
 
+function truncate(s: string, max = 160): string {
+  return s.length > max ? `${s.slice(0, max - 1)}…` : s;
+}
+
+function summarizeSlack(type: string, p: Record<string, unknown>): string {
+  const author = asStr(p.author) ?? "someone";
+  const text = truncate(asStr(p.text) ?? "");
+  if (type === "slack.dm") return `DM from ${author}${text ? `: ${text}` : ""}`;
+  const channel = asStr(p.channel) ?? "?";
+  return `${author} in #${channel}${text ? `: ${text}` : ""}`;
+}
+
 function summarize(e: MCEvent): string {
   const p = e.payload ?? {};
   if (e.type.startsWith("alert.")) return asStr(p.message) ?? kindLabel(e.type);
+  if (e.type.startsWith("slack.")) return summarizeSlack(e.type, p);
   if (e.type === "quota.snapshot") {
     if (e.surface === "codex") return summarizeCodex(p);
     if (e.surface === "claude") return summarizeClaude(p);
@@ -93,6 +106,8 @@ const KIND_LABELS: Record<string, string> = {
   "collector.status": "status",
   "alert.throttle": "throttle",
   "alert.headroom": "headroom",
+  "slack.mention": "mention",
+  "slack.dm": "DM",
 };
 function kindLabel(type: string): string {
   return KIND_LABELS[type] ?? type.split(".").pop() ?? type;
