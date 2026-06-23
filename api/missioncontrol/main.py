@@ -7,15 +7,16 @@ from __future__ import annotations
 
 import asyncio
 import json
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Awaitable, Callable
 from contextlib import asynccontextmanager
 from dataclasses import asdict
 
-from fastapi import FastAPI, Request
+from fastapi import FastAPI, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import StreamingResponse
+from fastapi.responses import JSONResponse, StreamingResponse
 
 from .redact import redact_text
+from .security import host_allowed, new_session_token, origin_allowed
 from .service import get_store, record_snapshot, snapshot
 
 POLL_SECONDS = 30
@@ -34,6 +35,10 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
 
 app = FastAPI(title="Mission Control API", version="0.2.0", lifespan=lifespan)
 
+# Per-session token (issue #13): regenerated each process start. v1 exposes it as a baseline;
+# the v1.5 action surface will require it. Set at import so it exists with or without lifespan.
+app.state.session_token = new_session_token()
+
 # Read-only, local-first: only the local dev web origin may call us; GET only.
 app.add_middleware(
     CORSMiddleware,
@@ -43,9 +48,28 @@ app.add_middleware(
 )
 
 
+@app.middleware("http")
+async def localhost_guard(
+    request: Request, call_next: Callable[[Request], Awaitable[Response]]
+) -> Response:
+    """Reject DNS-rebinding (bad Host) and cross-site browser reads (bad Origin) before routing."""
+    if not host_allowed(request.headers.get("host")):
+        return JSONResponse({"detail": "host not allowed"}, status_code=403)
+    if not origin_allowed(request.headers.get("origin")):
+        return JSONResponse({"detail": "origin not allowed"}, status_code=403)
+    return await call_next(request)
+
+
 @app.get("/api/health")
 def health() -> dict[str, bool]:
     return {"ok": True}
+
+
+@app.get("/api/session")
+def session(request: Request) -> dict[str, str]:
+    """The per-session token (Origin/Host-guarded). Baseline for the v1.5 action surface."""
+    token: str = request.app.state.session_token
+    return {"token": token}
 
 
 @app.get("/api/quota")
