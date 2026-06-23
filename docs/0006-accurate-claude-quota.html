@@ -1,0 +1,84 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>0006 — Accurate Claude quota + stale windows — Mission Control KB</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <main class="wrap">
+    <header class="brand">
+      <img class="brandmark" src="logo.svg" width="26" height="26" alt="" />
+      <span class="wordmark">Mission Control</span>
+      <span class="brand-tag">radar</span>
+      <span class="spacer"></span>
+      <a href="index.html">Knowledge Base</a>
+    </header>
+    <h1>0006 &mdash; Accurate Claude quota + honest stale windows</h1>
+    <p class="meta">2026-06-23 &middot; Shipped (Claude quota opt-in; verified via fixture) &middot; Umar + Claude</p>
+    <p>
+      <span class="chip">area: api + web</span>
+      <span class="chip">PLAN.md §6, §9</span>
+      <span class="chip">issues: #16</span>
+    </p>
+
+    <h2>Problem</h2>
+    <p>The owner compared Mission Control to Claude's own usage page and called it <em>"wrong
+      results"</em>: the dashboard showed Claude as <strong>consumed tokens</strong> (248M / ~$269),
+      not the <strong>remaining</strong> quota the usage page shows (session 36% used, weekly 12%).
+      Root cause (confirmed by grepping <code>~/.claude</code>): the transcript carries only consumed
+      counts (<code>message.usage</code>); the remaining windows live <em>only</em> behind the OAuth
+      usage endpoint, which v1 deliberately deferred to stay credential-free. Two more accuracy
+      notes followed: confirm whether Codex really has a 5h window, and show long resets in days.</p>
+
+    <h2>Solution</h2>
+    <ul>
+      <li><strong>Claude remaining-window quota (the fix).</strong> <code>claudequota.py</code> (pure,
+        100%): the OAuth usage JSON → <code>Window</code>s, <code>remaining = (1 - utilization) *
+        100</code>; tolerant of fraction-vs-percent, int/float/ISO <code>resets_at</code>, and odd
+        shapes (degrade, never guess). The dashboard now shows Claude <strong>5h + weekly gauges</strong>
+        (primary, identical to Codex) and keeps the consumed/cost meter as a secondary detail.</li>
+      <li><strong>The credential boundary, held.</strong> <code>claudecreds.py</code> is the ONE
+        isolated reader (coverage-omit seam): it reads the Claude OAuth token (macOS Keychain via
+        <code>/usr/bin/security</code> fixed-argv no-shell; Linux <code>~/.claude/.credentials.json</code>),
+        holds it in memory for a single read-only <code>GET /api/oauth/usage</code>, and returns
+        <strong>numbers, never the token</strong> — errors swallowed/redacted, 60s cache. It is
+        <strong>opt-in</strong> (<code>MC_ENABLE_CLAUDE_QUOTA=1</code>) so credential access is always
+        explicit; off by default the dashboard says exactly which flag to set.</li>
+      <li><strong>Codex 5h is real; the bug was staleness.</strong> Confirmed via OpenAI docs that
+        Codex has a 5h rolling window + weekly. The "98% · resets now" the owner saw was a
+        <em>stale</em> window: after reset the rollout still shows the pre-reset percent. Now
+        <code>codex.py</code> (and <code>claudequota.py</code>) mark a window <code>stale</code> once
+        <code>resets_at</code> has passed, <code>alerts.py</code> skips stale windows (no false
+        throttle), and the gauge shows a muted "stale / awaiting reset" state instead of a misleading
+        number.</li>
+      <li><strong>Helpful countdowns.</strong> Resets over 24h render in days ("2d 16h", "1d 20h").
+        The Timeline's Claude summary now prefers the real remaining windows when present.</li>
+    </ul>
+    <div class="callout">Verified: api <strong>118 tests, 100%</strong> on pure logic, ruff + mypy
+      clean; web lint + typecheck + build clean. The dashboard was rendered against a realistic
+      fixture (Claude 64%/88% — matching the usage page's 36%/12% used — a stale Codex 5h, and
+      day-scale resets) since the live credentialed fetch can't run here (agents must not read the
+      token; the container proxy blocks the endpoint).</div>
+
+    <h2>Context</h2>
+    <p><strong>To use it live (owner's machine):</strong> set <code>MC_ENABLE_CLAUDE_QUOTA=1</code> in
+      <code>api/.env</code> and restart. The reader auto-detects Keychain (macOS) or
+      <code>~/.claude/.credentials.json</code> (Linux). This is the deferred PLAN.md §6 path; it was
+      the "only real risk" the spike flagged, so verify the four numbers look right and that no token
+      ever appears in logs/UI.</p>
+    <p><strong>Snapshot shape change:</strong> the <code>claude</code> object is now additive — it
+      keeps all consumed fields and gains <code>windows</code>, <code>quota_available</code>,
+      <code>quota_degraded</code>. Alerts/events treat Claude windows like any surface (vendor-neutral:
+      Claude can now raise throttle/headroom alerts too).</p>
+    <p><strong>Open / deferred:</strong> the generalized action endpoint + Slack mark-read (paused
+      mid-build when this came in — <code>slacksource.py</code> read seam shipped in 0005; the write
+      seam was removed and is a clean restart). The usage endpoint's exact field names are taken from
+      PLAN.md §6 and parsed tolerantly; if a real response differs, the parser degrades rather than
+      lies — adjust <code>_WINDOWS</code> / <code>_fraction</code> once seen against live data.</p>
+
+    <footer>Entry 0006 &middot; Mission Control Knowledge Base</footer>
+  </main>
+</body>
+</html>
