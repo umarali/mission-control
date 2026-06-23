@@ -16,7 +16,7 @@
       <a href="index.html">Knowledge Base</a>
     </header>
     <h1>0005 &mdash; v2 Slack collector (buried items)</h1>
-    <p class="meta">2026-06-23 &middot; Pure core shipped; live wiring handed off &middot; Umar + Claude</p>
+    <p class="meta">2026-06-23 &middot; Shipped (live, opt-in via SLACK_TOKEN) &middot; Umar + Claude</p>
     <p>
       <span class="chip">area: api + web</span>
       <span class="chip">PLAN.md §8, pain #3</span>
@@ -65,18 +65,29 @@
       text.</div>
 
     <h2>Context</h2>
-    <p><strong>What's left (handed to the owner, needs the runtime token):</strong> a thin
-      token-gated reader seam — read <code>SLACK_TOKEN</code> at call time (in memory only, redacted
-      from logs), <code>httpx</code> read-only GETs to <code>conversations.list</code>(types=im) +
-      <code>conversations.history</code> and/or <code>search.messages</code> (search needs a user
-      token), a short timeout + backoff — then feed the raw JSON to
-      <code>parse_history</code>/<code>parse_search</code> and append <code>slack_events(feed)</code>
-      to the store in <code>record_snapshot</code>, deduping on <code>slack_ts</code>. It belongs in
-      the coverage-omit seam list (like <code>paths.py</code>/<code>osnotify.py</code>) and should be
-      opt-in (e.g. only attempt when <code>SLACK_TOKEN</code> is set) so the non-invasive default
-      holds. The fixtures in <code>test_slack.py</code> are exactly the shapes that reader must
-      produce, so wiring is mechanical + verifiable once a token exists.</p>
-    <p><strong>Then (still v2/v3):</strong> the generalized guarded action endpoint — best built
+    <p><strong>Live wiring (now built — was the handoff in the first draft of this entry).</strong>
+      <code>slacksource.py</code> is the I/O seam (coverage-omit, like <code>paths.py</code>/
+      <code>osnotify.py</code>): <code>httpx</code> read-only GETs with a Slack <strong>user</strong>
+      token (<code>xoxp-…</code>) read at call time, in memory only, sent only in the
+      <code>Authorization</code> header — never persisted, logged, or returned; errors redacted.
+      <code>auth.test</code> + <code>users.list</code> (cached for the process), then
+      <code>conversations.list</code>(im)/<code>conversations.history</code> for DMs and
+      <code>search.messages</code> for mentions, bounded per poll. Search has no exact "mentions of
+      me", so the reader queries broadly by handle and <code>parse_search</code>'s new
+      <code>self_id</code> filter keeps only real <code>&lt;@self&gt;</code> matches.
+      <code>record_snapshot</code> records Slack <strong>opt-in</strong> (only when
+      <code>SLACK_TOKEN</code> is set), dedupes on <code>slack_ts</code>, and logs one
+      <code>collector.status</code> on a degraded feed (no spam) — all swallowed so a Slack hiccup
+      never breaks the gauges. Setup: <code>api/SLACK_SETUP.md</code> (free workspace + app manifest)
+      and <code>api/.env.example</code>.</p>
+    <p><strong>Verified:</strong> +3 behavioral wiring tests (dedup / no-status-spam / off-when-
+      disabled), the <code>self_id</code> filter unit-tested, 107 tests at 100% on pure logic; the
+      live seam was run against <code>slack.com</code> with an invalid token and degraded cleanly
+      with <em>no token in the error</em>. <strong>Caveat:</strong> the dedup window is the last
+      ~1000 slack rows; on a very busy workspace an older message could re-appear once (harmless —
+      the Timeline also key-collapses). Real-token verification on the owner's machine is the last
+      mile (this container's proxy 403s slack.com).</p>
+    <p><strong>Next (v2/v3):</strong> the generalized guarded action endpoint — best built
       <em>with</em> Slack's first "act" action (reply / mark-read) so the abstraction has &gt;1 user
       (the <code>/api/jump</code> token+Origin pattern is the template). Then v3 (#17) work-threads
       and AWS (#18).</p>

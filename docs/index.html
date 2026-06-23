@@ -43,8 +43,9 @@
       <li>
         <a href="0005-v2-slack-collector.html">0005 &mdash; v2 Slack collector (buried items)</a>
         <span class="when">&middot; 2026-06-23</span><br />
-        <span class="muted">Pure parser for Slack mentions + DMs (mrkdwn-demangled, redacted),
-          rendered in the Timeline. 100% covered; live token-gated reader handed to the owner.</span>
+        <span class="muted">Slack mentions + DMs (mrkdwn-demangled, redacted) rendered in the
+          Timeline, plus the live read-only reader (opt-in via SLACK_TOKEN) + setup guide. 100%
+          on pure logic; degrades cleanly, token never leaks.</span>
       </li>
       <li>
         <a href="0004-v2-timeline.html">0004 &mdash; v2 unified Timeline (web view)</a>
